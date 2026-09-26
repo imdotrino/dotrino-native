@@ -13,9 +13,7 @@ final class SealedFile: @unchecked Sendable {
     let lock = NSLock()
 
     init(name: String, keyAlias: String) {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        file = dir.appendingPathComponent(name)
+        file = SharedStorage.directory.appendingPathComponent(name)
         self.keyAlias = keyAlias
     }
 

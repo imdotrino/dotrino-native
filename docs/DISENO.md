@@ -31,6 +31,10 @@ Apple deja compartir entre apps del mismo equipo (DOTRINO S.A.S., `P7G853375S`):
 
 Cada app firma ella misma con la llave del chip. No hace falta tener otra app instalada.
 
+En código: la app llama a `SharedStorage.share(keychainAccessGroup:appGroup:)` al arrancar,
+antes de tocar ninguna llave ni almacén. Sin los grupos en sus entitlements, se para con su
+error en vez de seguir con un almacén propio (que sería otro aparato sin decirlo).
+
 ### 2.2 Android: una app de identidad, lo más ligera posible
 
 Una llave del Android Keystore es de UNA app y no se comparte. Así que la identidad vive en
@@ -69,6 +73,6 @@ se empareja por su cuenta: dos caminos para lo mismo es lo que la regla de simpl
 
 | | Hecho | Falta |
 |---|---|---|
-| Librería | movida desde `dotrino-app` (Swift + Kotlin), pruebas en verde | grupos compartidos (iOS), cliente del servicio (Android) |
+| Librería | movida desde `dotrino-app` (Swift + Kotlin), pruebas en verde; grupos compartidos en iOS (`SharedStorage`, 0.2.0) | cliente del servicio (Android) |
 | App de identidad Android | — | todo |
-| `dotrino-app` | usa su copia interna | pasar a esta librería |
+| `dotrino-app` | usa esta librería; en iOS, con los grupos compartidos | en Android, pasar a la app de identidad |

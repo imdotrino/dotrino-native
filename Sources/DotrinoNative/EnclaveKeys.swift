@@ -86,13 +86,16 @@ public final class EnclaveKeys: DeviceKeys, @unchecked Sendable {
     }
 }
 
-/// Generic-password items of this app, only on this device and readable after the first
-/// unlock (a ring arriving with the phone locked still has to reach the vault).
+/// Generic-password items, only on this device and readable after the first unlock (a ring
+/// arriving with the phone locked still has to reach the vault). In the team's shared group
+/// when the app called `SharedStorage.share`.
 enum Keychain {
     private static let service = "com.dotrino.app.keys"
 
     private static func query(_ account: String) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        if let g = SharedStorage.keychainAccessGroup { q[kSecAttrAccessGroup as String] = g }
+        return q
     }
 
     static func add(_ account: String, _ data: Data) throws {
