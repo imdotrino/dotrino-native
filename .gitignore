@@ -1,0 +1,13 @@
+.claude/
+# Swift
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+# Android
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+*.iml
+.idea/
