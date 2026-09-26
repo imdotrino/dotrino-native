@@ -36,6 +36,8 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 node test-vectors/gen.mjs            # regenera Tests/DotrinoNativeTests/Resources/vectors.json desde el pilar JS
 cd android && ./gradlew :dotrino-native:testDebugUnitTest          # Android (JVM)
 xcodebuild -scheme DotrinoNative -destination 'platform=iOS Simulator,name=iPhone 16' test   # iOS (en una Mac)
+# El llavero y el Secure Enclave se prueban ALOJADOS en una app (el simulador exige el
+# entitlement): esas pruebas viven en la app que usa la librería (dotrino-app, KeysAndStoreTests).
 
 # contra un proxio y una bóveda REALES (repos hermanos dotrino-proxy, dotrino-vault, dotrino-identity):
 node test-vectors/e2e-vault.mjs /tmp/e2e.json &
