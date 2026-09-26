@@ -20,7 +20,8 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * The two keys of ONE account on this device. The private halves never leave wherever they
- * live (Android Keystore in production): this interface only asks them to do their job.
+ * live (the Keystore of the identity app, reached over IPC — `IdentityClient`): this interface
+ * only asks them to do their job, and asking may take a round trip, hence `suspend`.
  *
  * - `publickey`: signing key (ECDSA P-256) as the ecosystem writes it, `{"kty","crv","x","y"}`.
  * - `encPub`: encryption key (ECDH P-256), same shape. It goes into the record so the vault
@@ -30,9 +31,9 @@ interface DeviceKeys {
     val publickey: String
     val encPub: String
     /** Signs the UTF-8 bytes of [text] and returns the P1363 (r‖s) signature in base64. */
-    fun sign(text: String): String
+    suspend fun sign(text: String): String
     /** Raw ECDH shared secret (the x coordinate, 32 bytes) with [peer]. */
-    fun agree(peer: PublicKey): ByteArray
+    suspend fun agree(peer: PublicKey): ByteArray
 }
 
 object Crypto {
@@ -112,7 +113,7 @@ object Crypto {
      * ephemeral `epk`, the 32 raw bytes as the AES-GCM key, and out comes the content key
      * (a base64 string).
      */
-    fun openWrap(wrap: JsonObject, keys: DeviceKeys): String {
+    suspend fun openWrap(wrap: JsonObject, keys: DeviceKeys): String {
         val epk = wrap["epk"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("invalid wrap")
         val iv = wrap["iv"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("invalid wrap")
         val ct = wrap["ct"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("invalid wrap")
@@ -128,7 +129,7 @@ object Crypto {
     }
 
     /** What the vault seals to the approver (the command of a request): a wrap plus an envelope. */
-    fun openSealed(wrap: JsonObject, envelope: JsonObject, keys: DeviceKeys): String =
+    suspend fun openSealed(wrap: JsonObject, envelope: JsonObject, keys: DeviceKeys): String =
         decryptWithCek(openWrap(wrap, keys), envelope)
 
     private fun aesGcmOpen(key: ByteArray, iv: ByteArray, ct: ByteArray): ByteArray {

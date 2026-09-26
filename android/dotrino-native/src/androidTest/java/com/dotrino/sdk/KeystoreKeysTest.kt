@@ -10,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
 import java.security.KeyPairGenerator
 import java.security.interfaces.ECPublicKey
@@ -24,7 +25,7 @@ class KeystoreKeysTest {
 
     @After fun cleanup() { KeystoreKeys.delete(id) }
 
-    @Test fun signsWhatThePilarVerifies() {
+    @Test fun signsWhatThePilarVerifies() = runBlocking<Unit> {
         val k = KeystoreKeys.create(id)
         val data = JsonObject(mapOf("op" to JsonPrimitive("approvals"), "ts" to JsonPrimitive(1790000000000)))
         val sig = k.sign(Canonical.stringify(data))
@@ -33,7 +34,7 @@ class KeystoreKeysTest {
         assertFalse(Crypto.verify(k.publickey, JsonObject(data + ("ts" to JsonPrimitive(1))), sig))
     }
 
-    @Test fun ecdhAgreesWithASoftwarePeer() {
+    @Test fun ecdhAgreesWithASoftwarePeer() = runBlocking<Unit> {
         val k = KeystoreKeys.create(id)
         val peer = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
         val mine = k.agree(peer.public)
@@ -43,7 +44,7 @@ class KeystoreKeysTest {
         assertEquals(k.publickey, Crypto.jwkOf(Crypto.publicKeyOf(k.publickey) as ECPublicKey))
     }
 
-    @Test fun oneAccountOneKeyAndNoOverwrite() {
+    @Test fun oneAccountOneKeyAndNoOverwrite() = runBlocking<Unit> {
         KeystoreKeys.create(id)
         assertTrue(KeystoreKeys.exists(id))
         assertThrows(IllegalStateException::class.java) { KeystoreKeys.create(id) }

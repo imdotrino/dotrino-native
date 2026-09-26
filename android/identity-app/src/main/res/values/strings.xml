@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Identidad Dotrino</string>
+    <string name="permission_label">Usar tu identidad de Dotrino</string>
+    <string name="info_title">Tu identidad de Dotrino</string>
+    <string name="info_body">Aquí viven tus llaves: nunca salen de este teléfono. Las apps de Dotrino las usan desde aquí, así que tu cuenta es la misma en todas y solo emparejas una vez.\n\nNo necesitas abrir esta app. Tus cuentas se gestionan desde la app de Dotrino.</string>
+    <string name="info_accounts">Cuentas en este teléfono: %1$d</string>
+</resources>

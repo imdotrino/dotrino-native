@@ -64,7 +64,7 @@ class KeystoreKeys private constructor(private val id: String) : DeviceKeys {
     override val publickey: String by lazy { Crypto.jwkOf(pub(signAlias(id))) }
     override val encPub: String by lazy { Crypto.jwkOf(pub(encAlias(id))) }
 
-    override fun sign(text: String): String = signBytes(text.toByteArray(Charsets.UTF_8))
+    override suspend fun sign(text: String): String = signBytes(text.toByteArray(Charsets.UTF_8))
 
     /** Signs raw bytes (what the identity of the WebView asks for) → P1363 (r‖s) in base64. */
     fun signBytes(bytes: ByteArray): String {
@@ -74,7 +74,7 @@ class KeystoreKeys private constructor(private val id: String) : DeviceKeys {
         return Crypto.b64(Crypto.derToP1363(s.sign()))
     }
 
-    override fun agree(peer: PublicKey): ByteArray {
+    override suspend fun agree(peer: PublicKey): ByteArray {
         val ka = KeyAgreement.getInstance("ECDH", STORE)
         ka.init(priv(encAlias(id)))
         ka.doPhase(peer, true)

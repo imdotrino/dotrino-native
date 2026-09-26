@@ -39,11 +39,11 @@ class VaultE2eTest {
         // The JS key's JWK carries extra fields (`ext`, `key_ops`): the vault knows it by THAT string.
         override val publickey = pubOf(sign)
         override val encPub = pubOf(enc)
-        override fun sign(text: String): String {
+        override suspend fun sign(text: String): String {
             val g = Signature.getInstance("SHA256withECDSA"); g.initSign(s); g.update(text.toByteArray(Charsets.UTF_8))
             return Crypto.b64(Crypto.derToP1363(g.sign()))
         }
-        override fun agree(peer: PublicKey): ByteArray { val k = KeyAgreement.getInstance("ECDH"); k.init(e); k.doPhase(peer, true); return k.generateSecret() }
+        override suspend fun agree(peer: PublicKey): ByteArray { val k = KeyAgreement.getInstance("ECDH"); k.init(e); k.doPhase(peer, true); return k.generateSecret() }
     }
 
     @Test fun approvesAPendingWriteOnARealVault() = runBlocking {

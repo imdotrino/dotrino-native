@@ -142,7 +142,7 @@ class VaultClient(
 
     suspend fun approvals(): List<Approval> {
         val body = secrets(buildJsonObject { put("op", "approvals") })
-        return (body["items"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { (it as? JsonObject)?.let(::approvalOf) }
+        return (body["items"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { e -> (e as? JsonObject)?.let { approvalOf(it) } }
     }
 
     suspend fun approve(id: String) = answer("approve", id)
@@ -169,7 +169,7 @@ class VaultClient(
         if (body["ok"]?.jsonPrimitive?.booleanOrNull != true) throw VaultError("that approval was no longer active", "not-found")
     }
 
-    private fun approvalOf(o: JsonObject): Approval? {
+    private suspend fun approvalOf(o: JsonObject): Approval? {
         val (ctx, err) = openCtx(o)
         return Approval(
             id = o.str("id") ?: return null, ns = o.str("ns") ?: "", kind = o.str("kind") ?: "read",
@@ -179,7 +179,7 @@ class VaultClient(
     }
 
     /** The context comes sealed to MY encryption key; open it here. Not opening is said, never hidden. */
-    private fun openCtx(o: JsonObject): Pair<JsonObject?, String?> {
+    private suspend fun openCtx(o: JsonObject): Pair<JsonObject?, String?> {
         (o["ctx"] as? JsonObject)?.let { return it to null }
         val wrap = o["ctxWrap"] as? JsonObject
         val env = o["ctxEnvelope"] as? JsonObject

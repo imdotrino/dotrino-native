@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toda app que usa la librería habla con la app de identidad (IdentityClient): necesita
+     verla (visibilidad de paquetes, Android 11+) y el permiso de firma de su servicio. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="com.dotrino.permission.IDENTITY" />
+    <queries>
+        <package android:name="com.dotrino.identity" />
+    </queries>
+</manifest>

@@ -12,6 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.PrivateKey
@@ -45,27 +46,27 @@ class GoldenVectorsTest {
         private val encKey = encJwk?.let(::priv)
         override val publickey = signJwk?.let(::pubOf) ?: ""
         override val encPub = encJwk?.let(::pubOf) ?: ""
-        override fun sign(text: String): String {
+        override suspend fun sign(text: String): String {
             val s = Signature.getInstance("SHA256withECDSA"); s.initSign(signKey); s.update(text.toByteArray(Charsets.UTF_8))
             return Crypto.b64(Crypto.derToP1363(s.sign()))
         }
-        override fun agree(peer: PublicKey): ByteArray {
+        override suspend fun agree(peer: PublicKey): ByteArray {
             val ka = KeyAgreement.getInstance("ECDH"); ka.init(encKey); ka.doPhase(peer, true); return ka.generateSecret()
         }
     }
 
-    @Test fun canonicalMatchesThePilar() {
+    @Test fun canonicalMatchesThePilar() = runBlocking<Unit> {
         for (c in v["canon"] as JsonArray) {
             val o = c.jsonObject
             assertEquals(o["canonical"]!!.jsonPrimitive.content, Canonical.stringify(o["input"]!!))
         }
     }
 
-    @Test fun canonicalRefusesFractions() {
+    @Test fun canonicalRefusesFractions() = runBlocking<Unit> {
         assertThrows(IllegalArgumentException::class.java) { Canonical.stringify(JsonObject(mapOf("a" to JsonPrimitive(1.5)))) }
     }
 
-    @Test fun aSignatureMadeByThePilarVerifiesHere() {
+    @Test fun aSignatureMadeByThePilarVerifiesHere() = runBlocking<Unit> {
         val s = v["sign"]!!.jsonObject
         val data = s["data"]!!.jsonObject
         assertTrue(Crypto.verify(s["publickey"]!!.jsonPrimitive.content, data, s["signature"]!!.jsonPrimitive.content))
@@ -73,7 +74,7 @@ class GoldenVectorsTest {
         assertFalse(Crypto.verify(s["publickey"]!!.jsonPrimitive.content, tampered, s["signature"]!!.jsonPrimitive.content))
     }
 
-    @Test fun whatThePhoneSignsVerifiesAsThePilarWould() {
+    @Test fun whatThePhoneSignsVerifiesAsThePilarWould() = runBlocking<Unit> {
         val s = v["sign"]!!.jsonObject
         val keys = SoftwareKeys(s["privateJwk"]!!.jsonObject, null)
         assertTrue("same JWK shape as the pilar", Delegation.samePubkey(keys.publickey, s["publickey"]!!.jsonPrimitive.content))
@@ -83,7 +84,7 @@ class GoldenVectorsTest {
         assertTrue(Crypto.verify(keys.publickey, data, sig))
     }
 
-    @Test fun derAndP1363RoundTrip() {
+    @Test fun derAndP1363RoundTrip() = runBlocking<Unit> {
         repeat(50) {
             val keys = SoftwareKeys(v["sign"]!!.jsonObject["privateJwk"]!!.jsonObject, null)
             val raw = Base64.getDecoder().decode(keys.sign("x$it"))
@@ -91,20 +92,20 @@ class GoldenVectorsTest {
         }
     }
 
-    @Test fun opensWhatTheVaultSealedToThisDevice() {
+    @Test fun opensWhatTheVaultSealedToThisDevice() = runBlocking<Unit> {
         val s = v["sealed"]!!.jsonObject
         val keys = SoftwareKeys(null, s["encPrivateJwk"]!!.jsonObject)
         val plain = Crypto.openSealed(s["ctxWrap"]!!.jsonObject, s["ctxEnvelope"]!!.jsonObject, keys)
         assertEquals(s["ctxPlain"]!!.jsonPrimitive.content, plain)
     }
 
-    @Test fun anEnvelopeForAnotherKeyDoesNotOpen() {
+    @Test fun anEnvelopeForAnotherKeyDoesNotOpen() = runBlocking<Unit> {
         val s = v["sealed"]!!.jsonObject
         val other = SoftwareKeys(null, v["sign"]!!.jsonObject["privateJwk"]!!.jsonObject)
-        assertThrows(Exception::class.java) { Crypto.openSealed(s["ctxWrap"]!!.jsonObject, s["ctxEnvelope"]!!.jsonObject, other) }
+        assertThrows(Exception::class.java) { runBlocking { Crypto.openSealed(s["ctxWrap"]!!.jsonObject, s["ctxEnvelope"]!!.jsonObject, other) } }
     }
 
-    @Test fun thePaperChecksAgainstThePinnedVault() {
+    @Test fun thePaperChecksAgainstThePinnedVault() = runBlocking<Unit> {
         val c = v["cert"]!!.jsonObject
         val cert = c["cert"]!!.jsonObject
         val master = c["master"]!!.jsonPrimitive.content
@@ -117,7 +118,7 @@ class GoldenVectorsTest {
         assertEquals("bad-signature", Delegation.check(widened, master, sub, null))
     }
 
-    @Test fun keyIdAndLabelMatchThePilar() {
+    @Test fun keyIdAndLabelMatchThePilar() = runBlocking<Unit> {
         val k = v["keyid"]!!.jsonObject
         assertEquals(k["id"]!!.jsonPrimitive.content, Delegation.pubkeyId(k["publickey"]!!.jsonPrimitive.content))
         assertEquals(k["label"]!!.jsonPrimitive.content, Delegation.keyLabel(k["publickey"]!!.jsonPrimitive.content))

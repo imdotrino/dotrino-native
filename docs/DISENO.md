@@ -73,6 +73,6 @@ se empareja por su cuenta: dos caminos para lo mismo es lo que la regla de simpl
 
 | | Hecho | Falta |
 |---|---|---|
-| Librería | movida desde `dotrino-app` (Swift + Kotlin), pruebas en verde; grupos compartidos en iOS (`SharedStorage`, 0.2.0) | cliente del servicio (Android) |
-| App de identidad Android | — | todo |
+| Librería | movida desde `dotrino-app` (Swift + Kotlin), pruebas en verde; grupos compartidos en iOS (`SharedStorage`, 0.2.0); cliente del servicio en Android (`IdentityClient`, `RemoteKeys`, `RemoteAccounts`, 0.3.0) | Maven Central |
+| App de identidad Android | `android/identity-app` (`com.dotrino.identity` 0.1.0): servicio + pantalla informativa | publicar en Play con la misma llave de firma que `com.dotrino.app` |
 | `dotrino-app` | usa esta librería; en iOS, con los grupos compartidos | en Android, pasar a la app de identidad |

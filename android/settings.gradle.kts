@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "dotrino-native"
-include(":dotrino-native")
+include(":dotrino-native", ":identity-app")
