@@ -1,0 +1,9 @@
+/* Los textos de la UI compartida: los mismos que android/dotrino-native/.../dotrino_strings.xml. */
+"dotrino_support_cta" = "Apoyar";
+"dotrino_support_heading" = "Apoya al proyecto";
+"dotrino_support_message" = "Si esta herramienta te resulta útil, puedes dar una pequeña contribución. Las apps del ecosistema Dotrino son gratuitas y autohosteadas. ¡Gracias!";
+"dotrino_support_donate" = "Donar";
+"dotrino_support_discord" = "Canal de Soporte";
+"dotrino_support_bug" = "Reporta un error";
+"dotrino_support_share" = "Compartir";
+"dotrino_support_close" = "Cerrar";

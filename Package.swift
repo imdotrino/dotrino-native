@@ -6,10 +6,17 @@ import PackageDescription
 
 let package = Package(
     name: "DotrinoNative",
+    defaultLocalization: "es",
     platforms: [.iOS("16.4")],
-    products: [.library(name: "DotrinoNative", targets: ["DotrinoNative"])],
+    products: [
+        .library(name: "DotrinoNative", targets: ["DotrinoNative"]),
+        // Los componentes de pantalla del ecosistema en SwiftUI (topbar, idioma). Aparte para
+        // que el núcleo no dependa de SwiftUI (CONVENCIONES §16.2: una sola versión nativa).
+        .library(name: "DotrinoNativeUI", targets: ["DotrinoNativeUI"]),
+    ],
     targets: [
         .target(name: "DotrinoNative"),
+        .target(name: "DotrinoNativeUI", resources: [.process("Resources")]),
         .testTarget(
             name: "DotrinoNativeTests",
             dependencies: ["DotrinoNative"],
