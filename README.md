@@ -26,6 +26,12 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `ProxyConnection.kt` | `connected` / `identify` / `push-subscribe` / mensaje por pubkey | `proxy-client/src/client.js` |
 | `VaultClient.kt` | `approvals` / `approve` / `deny` / `grants` / `renew` | `vault/remote.js` `vaultRpc` |
 | `AccountStore.kt` | las cuentas en disco, cifradas con una llave del Keystore | — |
+| `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, sellado; una caché por app | `@dotrino/store` (sin el espacio por perfil ni el respaldo en la bóveda, todavía) |
+
+**Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
+Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
+`DotrinoLocale`, `DotrinoApps`); iOS en el producto aparte **`DotrinoNativeUI`** (SwiftUI:
+`DotrinoTopbar`, `DotrinoLang`), para que el núcleo no dependa de SwiftUI.
 
 **No hace el emparejamiento.** El alta la hace el pilar JS de siempre (la consola, con
 `enrollDevice` y un firmador externo), firmando con la llave del chip.
