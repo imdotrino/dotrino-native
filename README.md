@@ -40,7 +40,9 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 
 Probado de punta a punta contra un proxio real y un espectador que corre `@dotrino/lobby` tal
 cual (`test-vectors/e2e-broadcast.mjs` + `BroadcastE2eTest`, también desde iOS por la LAN), y
-en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`).
+en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`). La política del acta,
+con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `ActaE2eTest`): con
+`sign` el perfil emite y el espectador lo verifica; tras quitarle `sign`, `needs-vault-signer`.
 
 **Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
 Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
