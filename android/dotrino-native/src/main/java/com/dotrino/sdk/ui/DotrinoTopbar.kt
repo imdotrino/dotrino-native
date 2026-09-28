@@ -25,13 +25,22 @@ import com.dotrino.sdk.R
  * native screens that use it (Requests, the identity app) are about every account at once.
  *
  * `DotrinoTopbar(activity, repo = "imdotrino/dotrino-app") { open home }.view` is added on top of the screen.
+ *
+ * An app with its own name passes [brand] (the web topbar's `brand` + `icon`) and its buttons
+ * in [actions] (the web topbar's default slot): they go between the brand and ES/EN.
  */
 class DotrinoTopbar(
     private val activity: Activity,
     /** The GitHub repo where «Report a bug» goes. */
     private val repo: String,
+    /** The app's name and icon; null = «Dotrino» with the ecosystem mark. */
+    brand: Brand? = null,
+    /** The app's own buttons (e.g. «Results», «☰»), in order. */
+    actions: List<View> = emptyList(),
     onBrand: () -> Unit,
 ) {
+    data class Brand(val name: String, val icon: Int)
+
     companion object {
         val KOFI: Uri = Uri.parse("https://ko-fi.com/dotrino")
         val DISCORD: Uri = Uri.parse("https://discord.gg/D648uq7cth")
@@ -47,7 +56,8 @@ class DotrinoTopbar(
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundColor(color(R.color.dotrino_card))
         setPadding(px(16), px(8), px(16), px(8))
-        addView(brand(onBrand), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(brand(brand, onBrand), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        for (a in actions) addView(a)
         addView(lang())
         addView(ImageButton(activity).apply {
             setImageResource(R.drawable.dotrino_coin)
@@ -59,13 +69,13 @@ class DotrinoTopbar(
         }, LinearLayout.LayoutParams(px(44), px(44)).apply { marginStart = px(10) })
     }
 
-    private fun brand(onBrand: () -> Unit) = LinearLayout(activity).apply {
+    private fun brand(b: Brand?, onBrand: () -> Unit) = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setOnClickListener { onBrand() }
-        addView(ImageView(activity).apply { setImageResource(R.drawable.dotrino_brand) }, LinearLayout.LayoutParams(px(28), px(28)))
+        addView(ImageView(activity).apply { setImageResource(b?.icon ?: R.drawable.dotrino_brand) }, LinearLayout.LayoutParams(px(28), px(28)))
         addView(TextView(activity).apply {
-            text = "Dotrino"; setTextColor(color(R.color.dotrino_fg)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            text = b?.name ?: "Dotrino"; isSingleLine = true; setTextColor(color(R.color.dotrino_fg)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTypeface(typeface, Typeface.BOLD); setPadding(px(8), 0, 0, 0)
         })
     }
