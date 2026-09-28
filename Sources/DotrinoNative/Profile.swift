@@ -111,3 +111,18 @@ public final class Profile: @unchecked Sendable {
         return s
     }
 }
+
+extension Profile {
+    /// The profile of THIS phone: the identity's store and its chip keys, shared by every
+    /// Dotrino app of the team (`SharedStorage.share` first). `no-profile` when there is none.
+    public static func fromPhone() throws -> Profile {
+        try load(try IdentityStore.shared.all()) { try EnclaveKeys.open($0) }
+    }
+
+    /// The app's TRANSPORT key: it signs this app's channel entries (`proxy-client`'s own
+    /// keypair). It is the app's, not the person's: no profile needed.
+    public static func transportKey(app: String) throws -> DeviceKeys {
+        let id = "transport.\(app)"
+        return EnclaveKeys.exists(id) ? try EnclaveKeys.open(id) : try EnclaveKeys.create(id)
+    }
+}
