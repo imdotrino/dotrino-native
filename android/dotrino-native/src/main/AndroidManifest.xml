@@ -3,6 +3,9 @@
      verla (visibilidad de paquetes, Android 11+) y el permiso de firma de su servicio. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="com.dotrino.permission.IDENTITY" />
+    <!-- La librería habla con el proxio (ProxyConnection, BroadcastHost). Sin esto, OkHttp
+         lanza un SecurityException en su propio hilo y tumba la app entera. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <queries>
         <package android:name="com.dotrino.identity" />
         <!-- Las apps del catálogo (DotrinoApps): saber si están instaladas para abrirlas o instalarlas. -->
