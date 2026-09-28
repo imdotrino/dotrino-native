@@ -49,10 +49,13 @@ class IdentityClient(context: Context) {
 
         fun isInstalled(context: Context): Boolean = try {
             context.packageManager.getPackageInfo(PACKAGE, 0); true
-        } catch (_: Exception) { false }
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) { false }
 
-        /** Where to install it: Google Play (memory: Android apps go only through Play). */
-        val installUri: Uri = Uri.parse("https://play.google.com/store/apps/details?id=$PACKAGE")
+        /**
+         * Where to install it: the Play app itself (`market://`), one tap from the install
+         * button. Android apps go only through Play, so there is no other store to send to.
+         */
+        val installUri: Uri = Uri.parse("market://details?id=$PACKAGE")
     }
 
     class IdentityError(message: String, val code: String) : Exception(message)
