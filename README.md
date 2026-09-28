@@ -28,6 +28,20 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `AccountStore.kt` | las cuentas en disco, cifradas con una llave del Keystore | — |
 | `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, sellado; una caché por app | `@dotrino/store` (sin el espacio por perfil ni el respaldo en la bóveda, todavía) |
 
+**Hablar como el perfil del teléfono** (para compartir en vivo y lo que venga):
+
+| Pieza | Qué es | Original en JS |
+|---|---|---|
+| `Profile` | la identidad ACTIVA del teléfono leída del almacén de la identidad (`kv:`/`key:`), con su política: firma solo si el acta le da `sign` (si no, `needs-vault-signer`: firmar por la bóveda aún no está portado); `encrypt`/`decrypt` (sobre v2) | `@dotrino/identity` `signData`, `encrypt`, `decrypt` |
+| `Acta` | `memberCan` / `effectiveCaps` (solo leer) | `vault/acta.js` |
+| `PhoneIdentity` (Android) / `Profile.fromPhone()` (iOS) | el perfil del teléfono: por la app de identidad en Android, por el almacén compartido del equipo en iOS; y la llave del TRANSPORTE de la app (firma sus canales) | — |
+| `ProxyConnection` (+) | el saludo (`helloTo`), canales (`publish`), anunciar y averiguar llaves de cifrado verificadas (`announceEncPub`, `encPubOf`), mandar por token | `proxy-client` |
+| `BroadcastHost` | la EMISIÓN de lobby, lado del emisor: sellada a cada espectador y firmada por el perfil; quien mira lo hace en la web | `@dotrino/lobby` `broadcast.js` |
+
+Probado de punta a punta contra un proxio real y un espectador que corre `@dotrino/lobby` tal
+cual (`test-vectors/e2e-broadcast.mjs` + `BroadcastE2eTest`, también desde iOS por la LAN), y
+en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`).
+
 **Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
 Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
 `DotrinoLocale`, `DotrinoApps`); iOS en el producto aparte **`DotrinoNativeUI`** (SwiftUI:
