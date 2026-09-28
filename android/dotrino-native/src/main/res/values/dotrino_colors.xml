@@ -1,0 +1,8 @@
+<resources>
+    <!-- La paleta oscura del ecosistema en nativo (la misma que dotrino-app). -->
+    <color name="dotrino_bg">#0B1220</color>
+    <color name="dotrino_card">#131D31</color>
+    <color name="dotrino_fg">#DBE7F7</color>
+    <color name="dotrino_muted">#8A9BB5</color>
+    <color name="dotrino_accent">#4F8CFF</color>
+</resources>

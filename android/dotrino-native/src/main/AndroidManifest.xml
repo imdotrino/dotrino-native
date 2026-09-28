@@ -5,5 +5,7 @@
     <uses-permission android:name="com.dotrino.permission.IDENTITY" />
     <queries>
         <package android:name="com.dotrino.identity" />
+        <!-- Las apps del catálogo (DotrinoApps): saber si están instaladas para abrirlas o instalarlas. -->
+        <package android:name="com.dotrino.app" />
     </queries>
 </manifest>

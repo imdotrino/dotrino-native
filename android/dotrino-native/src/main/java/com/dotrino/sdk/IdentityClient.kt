@@ -47,15 +47,13 @@ class IdentityClient(context: Context) {
         const val GONE = "identity-gone"
         private val json = Json { ignoreUnknownKeys = true }
 
-        fun isInstalled(context: Context): Boolean = try {
-            context.packageManager.getPackageInfo(PACKAGE, 0); true
-        } catch (_: android.content.pm.PackageManager.NameNotFoundException) { false }
+        fun isInstalled(context: Context): Boolean = com.dotrino.sdk.ui.DotrinoApps.isInstalled(context, PACKAGE)
 
         /**
          * Where to install it: the Play app itself (`market://`), one tap from the install
          * button. Android apps go only through Play, so there is no other store to send to.
          */
-        val installUri: Uri = Uri.parse("market://details?id=$PACKAGE")
+        val installUri: Uri = com.dotrino.sdk.ui.DotrinoApps.storeUri(PACKAGE)
     }
 
     class IdentityError(message: String, val code: String) : Exception(message)
