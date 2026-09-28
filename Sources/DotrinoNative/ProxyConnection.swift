@@ -61,6 +61,35 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     private var listeners: [UUID: (Incoming) -> Void] = [:]
     private var _closed: String?
     public private(set) var token: String?
+    /// The proxy node this connection lives on (12 chars), from `connected`.
+    public private(set) var node: String?
+    /// What this proxy says it can do (`caps`), or nil for a proxy older than that.
+    public private(set) var caps: [String]?
+
+    public static let helloTag = "__cc_hello__"
+
+    /// Transport events besides messages: a peer left, a channel changed, a token said whose it is.
+    public enum Event: Sendable {
+        case peerGone(token: String, channel: String?)
+        case joined(channel: String, token: String)
+        case left(channel: String, token: String)
+        case peerIdentity(token: String, publickey: String)
+    }
+    private var eventListeners: [UUID: (Event) -> Void] = [:]
+    public func onEvent(_ l: @escaping (Event) -> Void) -> () -> Void {
+        let key = UUID()
+        lock.withLock { eventListeners[key] = l }
+        return { [weak self] in self?.lock.withLock { self?.eventListeners[key] = nil } }
+    }
+    private func emit(_ e: Event) { lock.withLock { Array(eventListeners.values) }.forEach { $0(e) } }
+
+    // THE GREETING (`helloTo` of the JS client): «this token is this identity». A control frame
+    // of the transport, in the clear on purpose: it only carries a PUBLIC key.
+    private var tokenPubkeys: [String: String] = [:]
+    private var helloSent = Set<String>()
+    /// The identity I identified as; the greeting says it.
+    public private(set) var myPublickey: String?
+    private var encPubs: [String: String] = [:]
 
     public var closed: String? { lock.lock(); defer { lock.unlock() }; return _closed }
 
@@ -152,7 +181,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         switch type {
         case "connected":
             guard let t = (o["instance"] ?? o["token"])?.string else { die("connected without a token"); return }
-            lock.lock(); token = t; lock.unlock()
+            lock.withLock {
+                token = t
+                node = o["node"]?.string
+                caps = o["caps"]?.array?.compactMap(\.string)
+            }
             connected.finish(.success(t))
         case "message":
             let payload: JSON?
@@ -162,9 +195,24 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             default: payload = nil
             }
             guard let payload else { return }
+            // The greeting is the transport's: answered here, it never reaches the app.
+            if payload["t"]?.string == Self.helloTag {
+                if let from = o["from"]?.string { onHello(from, payload) }
+                return
+            }
             let inc = Incoming(from: o["from"]?.string, fromPubkey: o["from_publickey"]?.string, payload: payload)
             lock.lock(); let ls = Array(listeners.values); lock.unlock()
             ls.forEach { $0(inc) }
+        case "disconnected":
+            guard let t = o["token"]?.string else { return }
+            // The token dies with the connection and is never reused: what it said is forgotten.
+            lock.withLock { tokenPubkeys[t] = nil; helloSent.remove(t) }
+            emit(.peerGone(token: t, channel: o["channel"]?.string))
+            if let id, let p = take(id) { p.finish(.success(o)) }
+        case "joined":
+            if let c = o["channel"]?.string, let t = o["token"]?.string { emit(.joined(channel: c, token: t)) }
+        case "left":
+            if let c = o["channel"]?.string, let t = o["token"]?.string { emit(.left(channel: c, token: t)) }
         case "error":
             if let id, let p = take(id) {
                 p.finish(.failure(ProxyError(o["error"]?.string ?? "proxy error", code: o["code"]?.string ?? "proxy-error")))
@@ -205,10 +253,94 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// queued while I was away gets delivered. The token is the challenge of this connection
     /// and goes inside what is signed; `aud` says who it is meant for.
     public func identify(_ keys: DeviceKeys) async throws {
+        try await identifyAs(keys.publickey) { try keys.sign(Canonical.stringify($0)) }
+    }
+
+    /// `identifyAs` of the JS client: [publickey] signs, with [sign], that it is behind this
+    /// connection. A profile signs through its own policy ([Profile.signData]).
+    public func identifyAs(_ publickey: String, sign: (JSON) throws -> String) async throws {
         guard let t = token else { throw ProxyError("identify before connecting", code: "disconnected") }
-        let data: JSON = ["op": "identify", "aud": .string(audience), "publickey": .string(keys.publickey),
+        let data: JSON = ["op": "identify", "aud": .string(audience), "publickey": .string(publickey),
                           "token": .string(t), "ts": .int(nowMs())]
-        try await request(["type": "identify", "data": data, "signature": .string(keys.sign(Canonical.stringify(data)))])
+        try await request(["type": "identify", "data": data, "signature": .string(try sign(data))])
+        lock.withLock { myPublickey = publickey }
+    }
+
+    // MARK: the greeting
+
+    public func helloTo(_ to: String) throws {
+        guard let me = lock.withLock({ myPublickey }) else { throw ProxyError("helloTo: identify first", code: "not-identified") }
+        if to == token { return }
+        _ = lock.withLock { helloSent.insert(to) }
+        try sendTo([to], ["t": .string(Self.helloTag), "publickey": .string(me)])
+    }
+
+    /// Whose this token is, if someone said it.
+    public func pubkeyOfToken(_ t: String) -> String? { lock.withLock { tokenPubkeys[t] } }
+
+    private func onHello(_ from: String, _ msg: JSON) {
+        guard let pk = msg["publickey"]?.string, !pk.isEmpty else { return }
+        let (ok, answer): (Bool, Bool) = lock.withLock {
+            // A TOKEN DOES NOT CHANGE OWNER: a second greeting with another identity is ignored.
+            if let before = tokenPubkeys[from], !Delegation.samePubkey(before, pk) { return (false, false) }
+            tokenPubkeys[from] = pk
+            return (true, !helloSent.contains(from) && myPublickey != nil)
+        }
+        guard ok else { return }
+        if answer { try? helloTo(from) }
+        emit(.peerIdentity(token: from, publickey: pk))
+    }
+
+    // MARK: by token and in channels
+
+    /// A message to connection tokens, `{ to, message }` like `_proxySendOne` of the JS client.
+    public func sendTo(_ tokens: [String], _ payload: JSON) throws {
+        try send(["to": .array(tokens.map { .string($0) }), "message": .string(payload.text)])
+    }
+
+    /// `buildSignedChannel`: the entry is signed by the TRANSPORT key of this app, not the identity.
+    private func signedChannel(_ name: String, _ transport: DeviceKeys) throws -> JSON {
+        let data: JSON = ["name": .string(name), "publickey": .string(transport.publickey)]
+        return ["data": data, "signature": .string(try transport.sign(Canonical.stringify(data)))]
+    }
+
+    public func publish(_ channel: String, transport: DeviceKeys) async throws {
+        try await request(["type": "publish", "channel": try signedChannel(channel, transport)])
+    }
+
+    public func unpublish(_ channel: String, transport: DeviceKeys) async throws {
+        try await request(["type": "unpublish", "channel": try signedChannel(channel, transport)])
+    }
+
+    // MARK: encryption keys
+
+    /// ANNOUNCE MY ENCRYPTION KEY, signed by the identity I identified as (`encpub.js`).
+    public func announceEncPub(_ publickey: String, _ encPub: String, sign: (JSON) throws -> String) async throws {
+        let data: JSON = ["v": 1, "op": "encpub", "aud": "dotrino:encpub", "publickey": .string(publickey),
+                          "encpub": .string(encPub), "ts": .int(nowMs())]
+        try await request(["type": "encpub", "data": data, "signature": .string(try sign(data))])
+        lock.withLock { encPubs[publickey] = encPub }
+    }
+
+    /// THE ENCRYPTION KEY OF AN IDENTITY, verified against that identity — or it throws with
+    /// `no-encpub`, `encpub-unverified` or `no-encpub-support`. Never nil, never «send anyway».
+    public func encPubOf(_ publickey: String) async throws -> String {
+        if let k = lock.withLock({ encPubs[publickey] }) { return k }
+        if let c = caps, !c.contains("encpub") { throw ProxyError("this proxy does not serve encryption keys", code: "no-encpub-support") }
+        let res = try await request(["type": "enc-lookup", "publickeys": [.string(publickey)]])
+        guard let st = res["keys"]?.array?.first(where: { Delegation.samePubkey($0["data"]?["publickey"]?.string, publickey) }) else {
+            throw ProxyError("no encryption key announced for that identity", code: "no-encpub")
+        }
+        guard let data = st["data"], let sig = st["signature"]?.string,
+              data["v"]?.int == 1, data["op"]?.string == "encpub", data["aud"]?.string == "dotrino:encpub",
+              let pk = data["publickey"]?.string, Delegation.samePubkey(pk, publickey),
+              let enc = data["encpub"]?.string, (try? JSON.parse(enc))?["crv"]?.string == "P-256"
+        else { throw ProxyError("encpub statement: malformed or for another identity", code: "encpub-unverified") }
+        guard Crypto.verify(publickey: pk, data: data, signature: sig) else {
+            throw ProxyError("encpub statement: bad signature — the key is not bound to that identity", code: "encpub-unverified")
+        }
+        lock.withLock { encPubs[publickey] = enc }
+        return enc
     }
 
     /// A directed message to a key. The payload travels as a JSON string, like the JS client sends it.

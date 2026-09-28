@@ -132,9 +132,19 @@ object Crypto {
     suspend fun openSealed(wrap: JsonObject, envelope: JsonObject, keys: DeviceKeys): String =
         decryptWithCek(openWrap(wrap, keys), envelope)
 
-    private fun aesGcmOpen(key: ByteArray, iv: ByteArray, ct: ByteArray): ByteArray {
+    fun aesGcmOpen(key: ByteArray, iv: ByteArray, ct: ByteArray): ByteArray {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
         return c.doFinal(ct)
     }
+
+    /** AES-GCM with a fresh 12-byte iv: `(iv, ct+tag)`, as WebCrypto gives them. */
+    fun aesGcmSeal(key: ByteArray, plain: ByteArray): Pair<ByteArray, ByteArray> {
+        val iv = ByteArray(12).also { java.security.SecureRandom().nextBytes(it) }
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        return iv to c.doFinal(plain)
+    }
+
+    fun randomBytes(n: Int) = ByteArray(n).also { java.security.SecureRandom().nextBytes(it) }
 }

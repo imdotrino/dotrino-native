@@ -42,7 +42,48 @@ const cert = await signDelegationWith(master.privateKey, masterPub, {
   sub: dev.publickey, scope: ['vault:sign', 'vault:approve'], iat: 1790000000000, seq: 37, nonce: 'n-1',
 })
 
+// 5) Perfil: una identidad del pilar (la de Node, el mismo core que el navegador) le escribe
+//    al «teléfono» con `encrypt` (sobre v2): la prueba nativa lo abre con `Profile.decrypt`.
+//    Lo contrario (el teléfono sella y el navegador abre) lo prueba e2e-broadcast.mjs.
+const { Identity } = await import(join(here, '../../dotrino-identity/src/node.js'))
+const { mkdtempSync } = await import('node:fs')
+const { tmpdir } = await import('node:os')
+const sender = await Identity.connect({ dir: mkdtempSync(join(tmpdir(), 'vec-id-')) })
+const phoneEnc = await makeDeviceEncKey()
+const profilePlain = JSON.stringify({ __ccl: 1, g: 'padel', r: '_k', k: 'bcast.watch', d: { secret: 'ñ-s', at: null } })
+const profileEnvelope = await sender.encrypt([{ encryptionPubkey: phoneEnc.encPublickey }], profilePlain)
+const senderEncPub = await sender.getEncryptionPubkey()
+
+// 6) Acta: qué puede un miembro (capacidades, renuncias del acta y propias, lo desconocido).
+const { memberCan } = await import(join(id, 'acta.js'))
+const actaA = {
+  members: [
+    { pub: 'P1', caps: ['sign', 'read', 'future-cap'] },
+    { pub: 'P2', caps: ['read'] },
+    { pub: 'P3', caps: ['sign', 'store'], cn: 'svc' },
+  ],
+  renounced: [{ member: 'P3', caps: ['store'] }],
+}
+const acta = []
+for (const [pub, cap, extra] of [['P1', 'sign'], ['P1', 'future-cap'], ['P2', 'sign'], ['P3', 'sign'], ['P3', 'store'],
+  ['P1', 'read', [{ member: 'P1', caps: ['read'] }]], ['P9', 'sign']]) {
+  acta.push({ pub, cap, extra: extra || [], can: memberCan(actaA, pub, cap, extra || []) })
+}
+
+// 7) Emisión de lobby: el enlace (`key.secret.x.y`) y el nombre del canal.
+const lobby = join(here, '../../dotrino-lobby/src')
+const { encodeBroadcastRef } = await import(join(lobby, 'broadcast.js'))
+const { broadcastChannel } = await import(join(lobby, 'protocol.js'))
+const hostPub = dev.publickey
+const broadcast = [
+  { key: 'ABCDEFGH1234xYz_-9', secret: 's3cr3t-_', hostPubkey: hostPub },
+  { key: '_noNode_key', secret: 'sec', hostPubkey: hostPub },
+].map((r) => ({ ...r, encoded: encodeBroadcastRef(r), channel: broadcastChannel('padel', r.key) }))
+
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
+  profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
+  acta: { acta: actaA, cases: acta },
+  broadcast,
   canon,
   sign: { privateJwk: dev.privateJwk, publickey: dev.publickey, data, signature },
   sealed: { encPrivateJwk: enc.encPrivateJwk, encPub: enc.encPublickey, ctxWrap, ctxEnvelope, ctxPlain },

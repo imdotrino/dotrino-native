@@ -98,6 +98,18 @@ public enum Crypto {
         try decryptWithCek(openWrap(wrap, keys: keys), envelope: envelope)
     }
 
+    /// AES-GCM with a fresh 12-byte iv: `(iv, ct+tag)`, as WebCrypto gives them.
+    static func aesGcmSeal(key: Data, plain: Data) throws -> (Data, Data) {
+        let box = try AES.GCM.seal(plain, using: SymmetricKey(data: key), nonce: AES.GCM.Nonce())
+        return (Data(box.nonce), box.ciphertext + box.tag)
+    }
+
+    static func randomBytes(_ n: Int) -> Data {
+        var d = Data(count: n)
+        _ = d.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, n, $0.baseAddress!) }
+        return d
+    }
+
     /// WebCrypto's AES-GCM output is the ciphertext with the 16-byte tag appended.
     static func aesGcmOpen(key: Data, iv: Data, ct: Data) throws -> Data {
         guard ct.count >= 16 else { throw CryptoError("aes-gcm: ciphertext too short") }

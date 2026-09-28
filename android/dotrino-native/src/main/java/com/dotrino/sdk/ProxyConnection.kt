@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class ProxyConnection(private val url: String) {
     companion object {
+        const val HELLO_TAG = "__cc_hello__"
         private val http: OkHttpClient by lazy {
             OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
         }
@@ -48,6 +49,29 @@ class ProxyConnection(private val url: String) {
     private val listeners = CopyOnWriteArrayList<(Incoming) -> Unit>()
     @Volatile var closed: String? = null; private set
     var token: String? = null; private set
+    /** The proxy node this connection lives on (12 chars), from `connected`. */
+    var node: String? = null; private set
+    /** What this proxy says it can do (`caps`), or null for a proxy older than that. */
+    var caps: List<String>? = null; private set
+
+    /** Transport events besides messages: a peer left (`disconnected`), a channel changed. */
+    sealed class Event {
+        data class PeerGone(val token: String, val channel: String?) : Event()
+        data class Joined(val channel: String, val token: String) : Event()
+        data class Left(val channel: String, val token: String) : Event()
+        data class PeerIdentity(val token: String, val publickey: String) : Event()
+    }
+    private val events = CopyOnWriteArrayList<(Event) -> Unit>()
+    fun onEvent(l: (Event) -> Unit): () -> Unit { events.add(l); return { events.remove(l) } }
+    private fun emit(e: Event) = events.forEach { runCatching { it(e) } }
+
+    // THE GREETING (`helloTo` of the JS client): «this token is this identity». A control
+    // frame of the transport, in the clear on purpose: it only carries a PUBLIC key the proxy
+    // already bound to the connection at `identify`.
+    private val tokenPubkeys = ConcurrentHashMap<String, String>()
+    private val helloSent = ConcurrentHashMap.newKeySet<String>()
+    /** The identity I identified as; the greeting says it. */
+    @Volatile var myPublickey: String? = null; private set
 
     /** The audience that goes inside `identify`: the proxy URL without trailing slashes. */
     val audience: String get() = url.trimEnd('/')
@@ -82,7 +106,10 @@ class ProxyConnection(private val url: String) {
             "connected" -> {
                 val t = (o["instance"] ?: o["token"])?.jsonPrimitive?.content
                 if (t == null) { die("connected without a token"); return }
-                token = t; connected.complete(t)
+                token = t
+                node = o["node"]?.jsonPrimitive?.content
+                caps = (o["caps"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonPrimitive.content }
+                connected.complete(t)
             }
             "message" -> {
                 val raw = o["message"] ?: return
@@ -91,9 +118,24 @@ class ProxyConnection(private val url: String) {
                     is JsonPrimitive -> try { json.parseToJsonElement(raw.content) as? JsonObject } catch (_: Exception) { null }
                     else -> null
                 } ?: return
-                val inc = Incoming(o["from"]?.jsonPrimitive?.content, o["from_publickey"]?.jsonPrimitive?.content, payload)
+                val from = o["from"]?.jsonPrimitive?.content
+                // The greeting is the transport's: it is answered here and never reaches the app.
+                if ((payload["t"] as? JsonPrimitive)?.content == HELLO_TAG) {
+                    if (from != null) onHello(from, payload)
+                    return
+                }
+                val inc = Incoming(from, o["from_publickey"]?.jsonPrimitive?.content, payload)
                 listeners.forEach { runCatching { it(inc) } }
             }
+            "disconnected" -> {
+                val t = o["token"]?.jsonPrimitive?.content ?: return
+                // The token dies with the connection and is never reused: what it said is forgotten.
+                tokenPubkeys.remove(t); helloSent.remove(t)
+                emit(Event.PeerGone(t, o["channel"]?.jsonPrimitive?.content))
+                if (id != null) pending.remove(id)?.complete(o)
+            }
+            "joined" -> emit(Event.Joined(o["channel"]?.jsonPrimitive?.content ?: return, o["token"]?.jsonPrimitive?.content ?: return))
+            "left" -> emit(Event.Left(o["channel"]?.jsonPrimitive?.content ?: return, o["token"]?.jsonPrimitive?.content ?: return))
             "error" -> if (id != null) pending.remove(id)?.completeExceptionally(
                 ProxyError(o["error"]?.jsonPrimitive?.content ?: "proxy error", o["code"]?.jsonPrimitive?.content ?: "proxy-error"))
             else -> if (id != null) pending.remove(id)?.complete(o)
@@ -122,15 +164,126 @@ class ProxyConnection(private val url: String) {
      * queued while I was away gets delivered. The token is the challenge of this connection
      * and goes inside what is signed; `aud` says who it is meant for.
      */
-    suspend fun identify(keys: DeviceKeys) {
+    suspend fun identify(keys: DeviceKeys) = identifyAs(keys.publickey) { keys.sign(Canonical.stringify(it)) }
+
+    /**
+     * `identifyAs` of the JS client: [publickey] signs (with [sign], over the canonical data)
+     * that it is behind this connection. A profile signs through its own policy
+     * ([Profile.signData]), so the signer is given, not the keys.
+     */
+    suspend fun identifyAs(publickey: String, sign: suspend (JsonObject) -> String) {
         val t = token ?: throw ProxyError("identify before connecting", "disconnected")
         val data = buildJsonObject {
-            put("op", "identify"); put("aud", audience); put("publickey", keys.publickey)
+            put("op", "identify"); put("aud", audience); put("publickey", publickey)
             put("token", t); put("ts", System.currentTimeMillis())
         }
-        request(buildJsonObject {
-            put("type", "identify"); put("data", data); put("signature", keys.sign(Canonical.stringify(data)))
+        request(buildJsonObject { put("type", "identify"); put("data", data); put("signature", sign(data)) })
+        myPublickey = publickey
+    }
+
+    // ---------- the greeting ----------
+
+    fun helloTo(to: String) {
+        val me = myPublickey ?: throw ProxyError("helloTo: identify first", "not-identified")
+        if (to == token) return
+        helloSent.add(to)
+        sendTo(listOf(to), buildJsonObject { put("t", HELLO_TAG); put("publickey", me) })
+    }
+
+    /** Whose this token is, if someone said it. */
+    fun pubkeyOfToken(t: String): String? = tokenPubkeys[t]
+
+    private fun onHello(from: String, msg: JsonObject) {
+        val pk = (msg["publickey"] as? JsonPrimitive)?.content?.takeIf { it.isNotEmpty() } ?: return
+        val before = tokenPubkeys[from]
+        // A TOKEN DOES NOT CHANGE OWNER: a second greeting with another identity is an attempt
+        // to get sealed to someone else. The first one stands.
+        if (before != null && !Delegation.samePubkey(before, pk)) return
+        tokenPubkeys[from] = pk
+        if (from !in helloSent && myPublickey != null) runCatching { helloTo(from) }
+        emit(Event.PeerIdentity(from, pk))
+    }
+
+    // ---------- by token and in channels ----------
+
+    /** A message to connection tokens, `{ to, message }` like `_proxySendOne` of the JS client. */
+    fun sendTo(tokens: List<String>, payload: JsonObject) {
+        send(buildJsonObject {
+            put("to", buildJsonArray { tokens.forEach { add(JsonPrimitive(it)) } })
+            put("message", payload.toString())
         })
+    }
+
+    /**
+     * `buildSignedChannel`: the channel entry is signed by the TRANSPORT key of this app
+     * (`proxy-client`'s own keypair), not by the identity.
+     */
+    private suspend fun signedChannel(name: String, transport: DeviceKeys): JsonObject {
+        val data = buildJsonObject { put("name", name); put("publickey", transport.publickey) }
+        return buildJsonObject { put("data", data); put("signature", transport.sign(Canonical.stringify(data))) }
+    }
+
+    suspend fun publish(channel: String, transport: DeviceKeys) {
+        request(buildJsonObject { put("type", "publish"); put("channel", signedChannel(channel, transport)) })
+    }
+
+    suspend fun unpublish(channel: String, transport: DeviceKeys) {
+        request(buildJsonObject { put("type", "unpublish"); put("channel", signedChannel(channel, transport)) })
+    }
+
+    // ---------- encryption keys ----------
+
+    private val encPubs = ConcurrentHashMap<String, String>()
+
+    /**
+     * ANNOUNCE MY ENCRYPTION KEY: a short statement signed by the identity I identified as;
+     * the proxy keeps it and hands it to whoever asks, who checks the signature. The proxy is
+     * the mailbox, not the authority (`encpub.js` of the JS client).
+     */
+    suspend fun announceEncPub(publickey: String, encPub: String, sign: suspend (JsonObject) -> String) {
+        val data = buildJsonObject {
+            put("v", 1); put("op", "encpub"); put("aud", "dotrino:encpub")
+            put("publickey", publickey); put("encpub", encPub); put("ts", System.currentTimeMillis())
+        }
+        request(buildJsonObject { put("type", "encpub"); put("data", data); put("signature", sign(data)) })
+        encPubs[publickey] = encPub
+    }
+
+    /**
+     * THE ENCRYPTION KEY OF AN IDENTITY, verified against that identity — or it throws with
+     * `no-encpub`, `encpub-unverified` or `no-encpub-support`. Never null, never «send anyway».
+     */
+    suspend fun encPubOf(publickey: String): String {
+        encPubs[publickey]?.let { return it }
+        caps?.let { if ("encpub" !in it) throw ProxyError("this proxy does not serve encryption keys", "no-encpub-support") }
+        val res = request(buildJsonObject {
+            put("type", "enc-lookup"); put("publickeys", buildJsonArray { add(JsonPrimitive(publickey)) })
+        })
+        val statement = (res["keys"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .firstOrNull { Delegation.samePubkey((it["data"] as? JsonObject)?.get("publickey")?.jsonPrimitive?.content, publickey) }
+            ?: throw ProxyError("no encryption key announced for that identity", "no-encpub")
+        val encPub = readEncPubStatement(statement, publickey)
+        encPubs[publickey] = encPub
+        return encPub
+    }
+
+    private fun readEncPubStatement(statement: JsonObject, publickey: String): String {
+        val data = statement["data"] as? JsonObject ?: throw ProxyError("encpub statement: malformed", "encpub-unverified")
+        val sig = (statement["signature"] as? JsonPrimitive)?.content ?: throw ProxyError("encpub statement: malformed", "encpub-unverified")
+        fun f(k: String) = (data[k] as? JsonPrimitive)?.content
+        if (f("v") != "1" || f("op") != "encpub") throw ProxyError("encpub statement: not an announcement", "encpub-unverified")
+        if (f("aud") != "dotrino:encpub") throw ProxyError("encpub statement: wrong audience", "encpub-unverified")
+        if (!Delegation.samePubkey(f("publickey"), publickey)) throw ProxyError("encpub statement: announces another identity", "encpub-unverified")
+        val encPub = f("encpub") ?: throw ProxyError("encpub statement: no key", "encpub-unverified")
+        val jwk = runCatching { json.parseToJsonElement(encPub) as? JsonObject }.getOrNull()
+        if (jwk?.get("kty")?.jsonPrimitive?.content != "EC" || jwk["crv"]?.jsonPrimitive?.content != "P-256") {
+            throw ProxyError("encpub statement: not a P-256 public JWK", "encpub-unverified")
+        }
+        if (!Crypto.verify(f("publickey")!!, data, sig)) {
+            throw ProxyError("encpub statement: bad signature — the key is not bound to that identity", "encpub-unverified")
+        }
+        return encPub
     }
 
     /** Registers this phone's FCM token under my key: the proxy rings it when something is queued for me. */

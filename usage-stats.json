@@ -1,0 +1,28 @@
+{
+  "startedAt": 1790633778331,
+  "lastFlushAt": 1790633784299,
+  "perIp": {
+    "::ffff:127.0.0.1": {
+      "messages": 31,
+      "hardLimits": 0,
+      "softLimits": 0,
+      "firstSeen": 1790633783393,
+      "lastSeen": 1790633784299
+    }
+  },
+  "perOp": {
+    "identify": 3,
+    "encpub": 5,
+    "publish": 1,
+    "watch": 4,
+    "message": 11,
+    "enc-lookup": 4,
+    "unpublish": 1,
+    "unwatch": 2
+  },
+  "totalConnections": 3,
+  "totalMessages": 31,
+  "totalHardLimits": 0,
+  "totalSoftLimits": 0,
+  "retentionDays": 30
+}

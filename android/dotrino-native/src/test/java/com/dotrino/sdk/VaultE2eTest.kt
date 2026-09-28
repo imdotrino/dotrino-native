@@ -29,28 +29,11 @@ import javax.crypto.KeyAgreement
  *   DOTRINO_E2E=/tmp/e2e.json ./gradlew :dotrino-native:testDebugUnitTest
  */
 class VaultE2eTest {
-    private class SoftKeys(sign: JsonObject, enc: JsonObject) : DeviceKeys {
-        private fun pubOf(j: JsonObject) = """{"kty":"EC","crv":"P-256","x":"${j["x"]!!.jsonPrimitive.content}","y":"${j["y"]!!.jsonPrimitive.content}"}"""
-        private fun priv(j: JsonObject): PrivateKey {
-            val d = BigInteger(1, Base64.getUrlDecoder().decode(j["d"]!!.jsonPrimitive.content))
-            return KeyFactory.getInstance("EC").generatePrivate(ECPrivateKeySpec(d, (Crypto.publicKeyOf(pubOf(j)) as ECPublicKey).params))
-        }
-        private val s = priv(sign); private val e = priv(enc)
-        // The JS key's JWK carries extra fields (`ext`, `key_ops`): the vault knows it by THAT string.
-        override val publickey = pubOf(sign)
-        override val encPub = pubOf(enc)
-        override suspend fun sign(text: String): String {
-            val g = Signature.getInstance("SHA256withECDSA"); g.initSign(s); g.update(text.toByteArray(Charsets.UTF_8))
-            return Crypto.b64(Crypto.derToP1363(g.sign()))
-        }
-        override suspend fun agree(peer: PublicKey): ByteArray { val k = KeyAgreement.getInstance("ECDH"); k.init(e); k.doPhase(peer, true); return k.generateSecret() }
-    }
-
     @Test fun approvesAPendingWriteOnARealVault() = runBlocking {
         val path = System.getenv("DOTRINO_E2E")
         assumeTrue("DOTRINO_E2E not set: start test-vectors/e2e-vault.mjs to run this", path != null && File(path).exists())
         val f = Json.parseToJsonElement(File(path!!).readText()).jsonObject
-        val keys = SoftKeys(f["privateJwk"]!!.jsonObject, f["encPrivateJwk"]!!.jsonObject)
+        val keys = TestKeys.fromJwk(f["privateJwk"]!!.jsonObject, f["encPrivateJwk"]!!.jsonObject)
         val cert = f["cert"]!!.jsonObject
         // The vault names this device by the pubkey string it enrolled with.
         val enrolledPub = cert["sub"]!!.jsonPrimitive.content
@@ -95,7 +78,7 @@ class VaultE2eTest {
         assumeTrue("DOTRINO_E2E not set: start test-vectors/e2e-vault.mjs to run this", path != null && File(path).exists())
         val f = Json.parseToJsonElement(File(path!!).readText()).jsonObject
         val n = f["noApprove"]!!.jsonObject
-        val keys = SoftKeys(n["privateJwk"]!!.jsonObject, n["encPrivateJwk"]!!.jsonObject)
+        val keys = TestKeys.fromJwk(n["privateJwk"]!!.jsonObject, n["encPrivateJwk"]!!.jsonObject)
         val cert = n["cert"]!!.jsonObject
         val k = object : DeviceKeys by keys { override val publickey = cert["sub"]!!.jsonPrimitive.content }
         val account = Account(id = "e2e-2", name = "E2E", vault = f["vault"]!!.jsonPrimitive.content,
