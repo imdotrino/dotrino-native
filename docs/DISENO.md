@@ -74,5 +74,5 @@ se empareja por su cuenta: dos caminos para lo mismo es lo que la regla de simpl
 | | Hecho | Falta |
 |---|---|---|
 | Librería | movida desde `dotrino-app` (Swift + Kotlin), pruebas en verde; grupos compartidos en iOS (`SharedStorage`, 0.2.0); cliente del servicio en Android (`IdentityClient`, `RemoteKeys`, `RemoteAccounts`, 0.3.0) | Maven Central |
-| App de identidad Android | `android/identity-app` (`com.dotrino.identity` 0.1.0): servicio + pantalla informativa | publicar en Play con la misma llave de firma que `com.dotrino.app` |
-| `dotrino-app` | usa esta librería; en iOS, con los grupos compartidos | en Android, pasar a la app de identidad |
+| App de identidad Android | `android/identity-app` (`com.dotrino.identity` 0.1.0): servicio + pantalla informativa; en la prueba interna de Play (2026-09-28) con la MISMA llave de firma que `com.dotrino.app` (Play App Signing → «misma llave que otra app»; se elige ANTES del primer bundle) | ficha, política de privacidad y seguridad de datos para salir de «unreviewed» |
+| `dotrino-app` | usa esta librería; en iOS, con los grupos compartidos; en Android, con la app de identidad (0.4.0) | — |
