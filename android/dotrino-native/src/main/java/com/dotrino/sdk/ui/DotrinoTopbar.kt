@@ -51,7 +51,25 @@ class DotrinoTopbar(
     private fun px(v: Int) = (v * dp).toInt()
     private fun color(id: Int) = activity.getColor(id)
 
-    val view: View = LinearLayout(activity).apply {
+    /**
+     * On a phone the app's buttons go to a SECOND row, right-aligned, as the web topbar does:
+     * in one row they squeeze the brand («Padel» came out as «Pad»). From 600 dp, one row.
+     */
+    private val secondRow = actions.isNotEmpty() && activity.resources.configuration.screenWidthDp < 600
+
+    val view: View = if (!secondRow) mainRow(brand, actions, onBrand) else LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundColor(color(R.color.dotrino_card))
+        addView(mainRow(brand, emptyList(), onBrand))
+        addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(px(16), 0, px(16), px(4))
+            for (a in actions) addView(a)
+        })
+    }
+
+    private fun mainRow(brand: Brand?, actions: List<View>, onBrand: () -> Unit) = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundColor(color(R.color.dotrino_card))
