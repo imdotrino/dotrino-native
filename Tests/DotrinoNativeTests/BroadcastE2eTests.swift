@@ -21,7 +21,8 @@ final class BroadcastE2eTests: XCTestCase {
         guard let s = ProcessInfo.processInfo.environment["DOTRINO_E2E_BCAST_URL"], let base = URL(string: s) else {
             throw XCTSkip("DOTRINO_E2E_BCAST_URL not set: start test-vectors/e2e-broadcast.mjs to run this")
         }
-        let f = try JSON.parse(try XCTUnwrap(try await get(base, "config")))
+        let config = try await get(base, "config")
+        let f = try JSON.parse(try XCTUnwrap(config))
         let profile = Profile.of(ProfileTests.SoftKeys(s: try key(f["sign"]!) { try .init(rawRepresentation: $0) },
                                                        e: try key(f["enc"]!) { try .init(rawRepresentation: $0) }))
         let transport = ProfileTests.SoftKeys(s: try key(f["transport"]!) { try .init(rawRepresentation: $0) },
