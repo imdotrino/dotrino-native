@@ -23,32 +23,44 @@ class DotrinoStore(context: Context, app: String) {
         require(Regex("[a-z0-9-]+").matches(app)) { "app name must be [a-z0-9-]: $app" }
     }
 
-    private val sealed = SealedFile(context, "dotrino-store-$app.bin", "dotrino.store.$app")
-    private var cache: StoreThreads? = null
+    /**
+     * The file, its cache and its lock are the APP's, not the instance's: two `DotrinoStore`
+     * of the same app (the results screen and the tournaments one) share them. With a cache
+     * each, the second to write would overwrite what the first wrote.
+     */
+    private class Shared(val sealed: SealedFile) { var cache: StoreThreads? = null }
+
+    companion object {
+        private val shared = HashMap<String, Shared>()
+    }
+
+    private val s: Shared = synchronized(shared) {
+        shared.getOrPut(app) { Shared(SealedFile(context.applicationContext, "dotrino-store-$app.bin", "dotrino.store.$app")) }
+    }
 
     private fun load(): StoreThreads {
-        cache?.let { return it }
-        val t = StoreThreads.decode(sealed.read()?.toString(Charsets.UTF_8))
-        cache = t
+        s.cache?.let { return it }
+        val t = StoreThreads.decode(s.sealed.read()?.toString(Charsets.UTF_8))
+        s.cache = t
         return t
     }
 
-    private fun save(t: StoreThreads) = sealed.write(t.encode().toByteArray(Charsets.UTF_8))
+    private fun save(t: StoreThreads) = s.sealed.write(t.encode().toByteArray(Charsets.UTF_8))
 
-    @Synchronized fun listThread(thread: String): List<JsonObject> = load().list(thread)
+    fun listThread(thread: String): List<JsonObject> = synchronized(s) { load().list(thread) }
 
-    @Synchronized fun appendMessage(thread: String, entry: JsonObject) {
+    fun appendMessage(thread: String, entry: JsonObject) = synchronized(s) {
         val t = load().copy()
         t.append(thread, entry)
         save(t)
-        cache = t
+        s.cache = t
     }
 
-    @Synchronized fun removeMessage(thread: String, id: String) {
+    fun removeMessage(thread: String, id: String) = synchronized(s) {
         val t = load().copy()
-        if (!t.remove(thread, id)) return
+        if (!t.remove(thread, id)) return@synchronized
         save(t)
-        cache = t
+        s.cache = t
     }
 }
 

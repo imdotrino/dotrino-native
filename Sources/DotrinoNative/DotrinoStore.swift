@@ -10,14 +10,36 @@ import Foundation
 ///
 /// One sealed file per app. Same piece as `DotrinoStore.kt`.
 public final class DotrinoStore: @unchecked Sendable {
-    private let sealed: SealedFile
-    private var cache: StoreThreads?
+    /// The file, its cache and its lock are the APP's, not the instance's: two `DotrinoStore`
+    /// of the same app share them. With a cache each, the second to write would overwrite
+    /// what the first wrote.
+    private final class Shared: @unchecked Sendable {
+        let sealed: SealedFile
+        var cache: StoreThreads?
+        init(_ sealed: SealedFile) { self.sealed = sealed }
+    }
+    nonisolated(unsafe) private static var shared: [String: Shared] = [:]
+    private static let sharedLock = NSLock()
+
+    private let s: Shared
+    private var sealed: SealedFile { s.sealed }
+    private var cache: StoreThreads? {
+        get { s.cache }
+        set { s.cache = newValue }
+    }
 
     public init(app: String) throws {
         guard app.range(of: "^[a-z0-9-]+$", options: .regularExpression) != nil else {
             throw CryptoError("app name must be [a-z0-9-]: \(app)")
         }
-        sealed = SealedFile(name: "dotrino-store-\(app).bin", keyAlias: "dotrino.store.\(app)")
+        Self.sharedLock.lock(); defer { Self.sharedLock.unlock() }
+        if let x = Self.shared[app] {
+            s = x
+        } else {
+            let x = Shared(SealedFile(name: "dotrino-store-\(app).bin", keyAlias: "dotrino.store.\(app)"))
+            Self.shared[app] = x
+            s = x
+        }
     }
 
     private func load() throws -> StoreThreads {
