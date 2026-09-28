@@ -46,7 +46,8 @@ con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `A
 
 **Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
 Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
-`DotrinoLocale`, `DotrinoApps`); iOS en el producto aparte **`DotrinoNativeUI`** (SwiftUI:
+`DotrinoLocale`, `DotrinoApps`, `DotrinoSheet` —el modal del ecosistema— e `IdentityRequired`:
+si falta la app de identidad, primero un modal que lo explica y después Play); iOS en el producto aparte **`DotrinoNativeUI`** (SwiftUI:
 `DotrinoTopbar`, `DotrinoLang`), para que el núcleo no dependa de SwiftUI.
 
 **No hace el emparejamiento.** El alta la hace el pilar JS de siempre (la consola, con

@@ -14,4 +14,8 @@
     <string name="dotrino_apps_missing">Not installed</string>
     <string name="dotrino_apps_no_store">Could not open Google Play on this phone.</string>
     <string name="dotrino_app_dotrino_desc">Your profile, your vault and the requests you approve from your phone.</string>
+    <string name="dotrino_identity_needed_heading">Install Dotrino Identity</string>
+    <string name="dotrino_identity_needed_message">Your Dotrino profile lives in the «Dotrino Identity» app, the same one for every Dotrino app on this phone. This app needs it to act in your name. Install it from Google Play and come back here.</string>
+    <string name="dotrino_identity_needed_install">Install from Google Play</string>
+    <string name="dotrino_identity_needed_later">Not now</string>
 </resources>

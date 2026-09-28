@@ -14,4 +14,8 @@
     <string name="dotrino_apps_missing">No instalada</string>
     <string name="dotrino_apps_no_store">No se pudo abrir Google Play en este teléfono.</string>
     <string name="dotrino_app_dotrino_desc">Tu perfil, tu bóveda y los pedidos que apruebas desde el teléfono.</string>
+    <string name="dotrino_identity_needed_heading">Instala Identidad Dotrino</string>
+    <string name="dotrino_identity_needed_message">Tu perfil de Dotrino vive en la app «Identidad Dotrino», la misma para todas las apps de Dotrino de este teléfono. Esta app la necesita para actuar en tu nombre. Instálala desde Google Play y vuelve aquí.</string>
+    <string name="dotrino_identity_needed_install">Instalar desde Google Play</string>
+    <string name="dotrino_identity_needed_later">Ahora no</string>
 </resources>
