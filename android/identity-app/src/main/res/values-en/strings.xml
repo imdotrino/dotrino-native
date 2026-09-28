@@ -1,7 +1,0 @@
-<resources>
-    <string name="app_name">Dotrino Identity</string>
-    <string name="permission_label">Use your Dotrino identity</string>
-    <string name="info_title">Your Dotrino identity</string>
-    <string name="info_body">Your keys live here and never leave this phone. Dotrino apps use them from here, so your account is the same in all of them and you pair only once.\n\nYou do not need to open this app. Your accounts are managed from the Dotrino app.</string>
-    <string name="info_accounts">Accounts on this phone: %1$d</string>
-</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Los idiomas de toda app nativa de Dotrino: `android:localeConfig="@xml/dotrino_locales_config"`.
+     Y el español va en `values-es`, nunca en `values` sin sufijo: Android solo elige un idioma que
+     el APK declara, y `values` no declara ninguno. Con el español ahí, «es» caía a `values-en`
+     y el ES del topbar no cambiaba los textos (la app de identidad, que no trae Material). -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="es" />
+    <locale android:name="en" />
+</locale-config>

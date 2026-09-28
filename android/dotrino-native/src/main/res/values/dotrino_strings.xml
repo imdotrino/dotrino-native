@@ -1,17 +1,17 @@
 <resources>
-    <string name="dotrino_support_cta">Apoyar</string>
-    <string name="dotrino_support_heading">Apoya al proyecto</string>
-    <string name="dotrino_support_message">Si esta herramienta te resulta útil, puedes dar una pequeña contribución. Las apps del ecosistema Dotrino son gratuitas y autohosteadas. ¡Gracias!</string>
-    <string name="dotrino_support_donate">Donar</string>
-    <string name="dotrino_support_discord">Canal de Soporte</string>
-    <string name="dotrino_support_bug">Reporta un error</string>
-    <string name="dotrino_support_share">Compartir</string>
-    <string name="dotrino_support_close">Cerrar</string>
-    <string name="dotrino_apps_title">Apps de Dotrino</string>
-    <string name="dotrino_apps_open">Abrir</string>
-    <string name="dotrino_apps_install">Instalar</string>
-    <string name="dotrino_apps_installed">Instalada</string>
-    <string name="dotrino_apps_missing">No instalada</string>
-    <string name="dotrino_apps_no_store">No se pudo abrir Google Play en este teléfono.</string>
-    <string name="dotrino_app_dotrino_desc">Tu perfil, tu bóveda y los pedidos que apruebas desde el teléfono.</string>
+    <string name="dotrino_support_cta">Support</string>
+    <string name="dotrino_support_heading">Support the project</string>
+    <string name="dotrino_support_message">If you find this tool useful, you can make a small contribution. The Dotrino ecosystem apps are free and self-hosted. Thank you!</string>
+    <string name="dotrino_support_donate">Donate</string>
+    <string name="dotrino_support_discord">Support channel</string>
+    <string name="dotrino_support_bug">Report a bug</string>
+    <string name="dotrino_support_share">Share</string>
+    <string name="dotrino_support_close">Close</string>
+    <string name="dotrino_apps_title">Dotrino apps</string>
+    <string name="dotrino_apps_open">Open</string>
+    <string name="dotrino_apps_install">Install</string>
+    <string name="dotrino_apps_installed">Installed</string>
+    <string name="dotrino_apps_missing">Not installed</string>
+    <string name="dotrino_apps_no_store">Could not open Google Play on this phone.</string>
+    <string name="dotrino_app_dotrino_desc">Your profile, your vault and the requests you approve from your phone.</string>
 </resources>
