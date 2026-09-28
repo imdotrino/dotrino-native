@@ -81,7 +81,7 @@ object DotrinoApps {
                 } catch (e: ActivityNotFoundException) {
                     onError(if (installed) (e.message ?: app.pkg) else activity.getString(R.string.dotrino_apps_no_store))
                 }
-            })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
             into.addView(row)
         }
     }
