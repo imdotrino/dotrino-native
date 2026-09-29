@@ -18,4 +18,5 @@
     <string name="dotrino_identity_needed_message">Tu perfil de Dotrino vive en la app «Identidad Dotrino», la misma para todas las apps de Dotrino de este teléfono. Esta app la necesita para actuar en tu nombre. Instálala desde Google Play y vuelve aquí.</string>
     <string name="dotrino_identity_needed_install">Instalar desde Google Play</string>
     <string name="dotrino_identity_needed_later">Ahora no</string>
+    <string name="dotrino_identity_needed_note">Gratis y sin anuncios. Se instala una vez y la usan todas las apps de Dotrino.</string>
 </resources>

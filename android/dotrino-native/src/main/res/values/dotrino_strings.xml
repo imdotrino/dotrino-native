@@ -18,4 +18,5 @@
     <string name="dotrino_identity_needed_message">Your Dotrino profile lives in the «Dotrino Identity» app, the same one for every Dotrino app on this phone. This app needs it to act in your name. Install it from Google Play and come back here.</string>
     <string name="dotrino_identity_needed_install">Install from Google Play</string>
     <string name="dotrino_identity_needed_later">Not now</string>
+    <string name="dotrino_identity_needed_note">Free and without ads. You install it once and every Dotrino app uses it.</string>
 </resources>

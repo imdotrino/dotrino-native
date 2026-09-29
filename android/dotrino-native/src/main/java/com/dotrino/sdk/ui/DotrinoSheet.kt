@@ -5,7 +5,11 @@ import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
+import android.graphics.Outline
 import android.view.Gravity
+import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -42,13 +46,33 @@ class DotrinoSheet(private val activity: Activity) {
         setLineSpacing(0f, 1.15f)
     }
 
-    fun heading(value: String) = text(value, 20f, R.color.dotrino_fg, bold = true).also {
+    fun heading(value: String) = text(value, 22f, R.color.dotrino_fg, bold = true).also {
         column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(12) })
     }
 
     fun message(value: String) = text(value, 15f, R.color.dotrino_muted, bold = false).also {
         column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8); bottomMargin = px(12) })
     }
+
+    /** A small line under the buttons (what is reassuring to know, not an explanation). */
+    fun footnote(value: String) = text(value, 13f, R.color.dotrino_muted, bold = false).also {
+        column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(14) })
+    }
+
+    /**
+     * An app's icon as the head of the sheet: rounded like a launcher icon, on a soft halo of
+     * the accent colour, so it reads as «this app» and not as a loose picture.
+     */
+    fun appIcon(res: Int) = FrameLayout(activity).apply {
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color(R.color.dotrino_accent)); alpha = 40 }
+        addView(ImageView(activity).apply {
+            setImageResource(res); scaleType = ImageView.ScaleType.CENTER_CROP
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(v: View, o: Outline) = o.setRoundRect(0, 0, v.width, v.height, px(18).toFloat())
+            }
+            clipToOutline = true; elevation = px(4).toFloat()
+        }, FrameLayout.LayoutParams(px(72), px(72), Gravity.CENTER))
+    }.also { column.addView(it, LinearLayout.LayoutParams(px(112), px(112)).apply { topMargin = px(4) }) }
 
     fun button(label: String, filled: Boolean = false, run: () -> Unit) = dotrinoButton(activity, label, filled, run).also {
         column.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48)).apply { topMargin = px(10) })

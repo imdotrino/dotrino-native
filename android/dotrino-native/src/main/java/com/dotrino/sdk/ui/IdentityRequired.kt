@@ -1,10 +1,9 @@
 package com.dotrino.sdk.ui
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.widget.ImageView
-import android.widget.LinearLayout
 import com.dotrino.sdk.IdentityClient
 import com.dotrino.sdk.R
 
@@ -24,10 +23,10 @@ object IdentityRequired {
         return false
     }
 
-    fun show(activity: Activity) {
+    /** Returns the dialog, so an app that needs the identity everywhere can close it on return. */
+    fun show(activity: Activity): Dialog {
         val sheet = DotrinoSheet(activity)
-        sheet.column.addView(ImageView(activity).apply { setImageResource(R.drawable.dotrino_brand) },
-            LinearLayout.LayoutParams(sheet.px(64), sheet.px(64)))
+        sheet.appIcon(R.drawable.dotrino_brand)
         sheet.heading(activity.getString(R.string.dotrino_identity_needed_heading))
         val msg = sheet.message(activity.getString(R.string.dotrino_identity_needed_message))
         sheet.button(activity.getString(R.string.dotrino_identity_needed_install), filled = true) {
@@ -40,6 +39,7 @@ object IdentityRequired {
             }
         }
         sheet.button(activity.getString(R.string.dotrino_identity_needed_later)) { sheet.dialog.dismiss() }
-        sheet.show()
+        sheet.footnote(activity.getString(R.string.dotrino_identity_needed_note))
+        return sheet.show()
     }
 }
