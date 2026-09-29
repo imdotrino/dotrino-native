@@ -27,7 +27,7 @@ let package = Package(
         .target(name: "DotrinoNativeWebRTC", dependencies: ["DotrinoNative", .product(name: "WebRTC", package: "WebRTC")]),
         .testTarget(
             name: "DotrinoNativeTests",
-            dependencies: ["DotrinoNative", "DotrinoNativeUI"],
+            dependencies: ["DotrinoNative", "DotrinoNativeUI", "DotrinoNativeWebRTC"],
             // Los MISMOS vectores que prueba Android (`test-vectors/gen.mjs` los escribe aquí).
             resources: [.copy("Resources/vectors.json")]
         ),
