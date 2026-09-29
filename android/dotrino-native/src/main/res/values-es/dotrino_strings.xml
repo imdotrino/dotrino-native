@@ -19,4 +19,7 @@
     <string name="dotrino_identity_needed_install">Instalar desde Google Play</string>
     <string name="dotrino_identity_needed_later">Ahora no</string>
     <string name="dotrino_identity_needed_note">Gratis y sin anuncios. Se instala una vez y la usan todas las apps de Dotrino.</string>
+    <string name="dotrino_profile_cta">Mi perfil</string>
+    <string name="dotrino_profile_message">Tus perfiles, sus aparatos y tu bóveda se administran en la app Dotrino, con la identidad de este teléfono.</string>
+    <string name="dotrino_profile_open">Abrir en la app Dotrino</string>
 </resources>

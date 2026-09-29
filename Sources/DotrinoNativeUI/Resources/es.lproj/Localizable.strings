@@ -7,3 +7,6 @@
 "dotrino_support_bug" = "Reporta un error";
 "dotrino_support_share" = "Compartir";
 "dotrino_support_close" = "Cerrar";
+"dotrino_profile_cta" = "Mi perfil";
+"dotrino_profile_message" = "Tus perfiles, sus aparatos y tu bóveda se administran en la app Dotrino, con la identidad de este teléfono.";
+"dotrino_profile_open" = "Abrir la app Dotrino";

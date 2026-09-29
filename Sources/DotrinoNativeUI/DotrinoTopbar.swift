@@ -19,14 +19,29 @@ public struct DotrinoTopbar<Actions: View>: View {
     private let repo: String
     private let brand: Brand?
     private let actions: Actions
+    private let profile: Profile?
     @State private var support = false
+    @State private var profileOpen = false
+
+    /// The PROFILE BUTTON (CONVENCIONES §6.1): the active profile's initial and key. Nil = it
+    /// still shows. On a phone the profiles are managed in the Dotrino app, with the phone's
+    /// identity — a browser would show another one.
+    public struct Profile {
+        let name: String?, key: String
+        public init(name: String?, key: String) { self.name = name; self.key = key }
+    }
     @Environment(\.openURL) private var openURL
 
     /// [repo]: the GitHub repo where «Report a bug» goes. [brand]: nil = «Dotrino».
-    public init(repo: String, brand: Brand? = nil, @ViewBuilder actions: () -> Actions) {
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, @ViewBuilder actions: () -> Actions) {
         self.repo = repo
         self.brand = brand
+        self.profile = profile
         self.actions = actions()
+    }
+
+    private static let avatarPalette: [Color] = [0x00658C, 0x006B5C, 0x665590, 0x8C4A00, 0x3F6B00, 0x7A3E6B].map {
+        Color(red: Double(($0 >> 16) & 0xFF) / 255, green: Double(($0 >> 8) & 0xFF) / 255, blue: Double($0 & 0xFF) / 255)
     }
 
     public var body: some View {
@@ -54,6 +69,14 @@ public struct DotrinoTopbar<Actions: View>: View {
             }
             .clipShape(Capsule())
             .overlay(Capsule().stroke(DotrinoPalette.muted.opacity(0.4)))
+            Button { profileOpen = true } label: {
+                let i = profile.map { abs($0.key.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }) % Self.avatarPalette.count }
+                Circle().fill(i.map { Self.avatarPalette[$0] } ?? DotrinoPalette.muted).frame(width: 34, height: 34)
+                    .overlay(Text(profile?.name?.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "👤")
+                        .font(.system(size: 15, weight: .bold)).foregroundColor(.white))
+            }
+            .accessibilityLabel(lang.text("dotrino_profile_cta", in: .module))
+            .accessibilityIdentifier("profile-button")
             Button { support = true } label: {
                 Image("DotrinoCoin", bundle: .module).resizable().frame(width: 34, height: 34)
             }
@@ -63,12 +86,25 @@ public struct DotrinoTopbar<Actions: View>: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(DotrinoPalette.card)
         .sheet(isPresented: $support) { SupportSheet(repo: repo, onClose: { support = false }) }
+        .sheet(isPresented: $profileOpen) {
+            VStack(spacing: 14) {
+                Text(profile?.name.flatMap { $0.isEmpty ? nil : $0 } ?? lang.text("dotrino_profile_cta", in: .module)).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
+                Text(lang.text("dotrino_profile_message", in: .module)).font(.callout).foregroundColor(DotrinoPalette.muted).multilineTextAlignment(.center)
+                // The Dotrino app's page: «Open» if it is installed, «Get» if not. (It has no URL
+                // scheme yet for another app to open it directly: pending in dotrino-app iOS.)
+                Button(lang.text("dotrino_profile_open", in: .module)) { openURL(URL(string: "https://apps.apple.com/app/id6817137047")!) }
+                    .font(.body.weight(.bold)).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(Capsule().fill(DotrinoPalette.accent))
+                Button(lang.text("dotrino_support_close", in: .module)) { profileOpen = false }.foregroundColor(DotrinoPalette.fg)
+            }
+            .padding(24).presentationDetents([.medium])
+        }
     }
 }
 
 extension DotrinoTopbar where Actions == EmptyView {
-    public init(repo: String, brand: Brand? = nil) {
-        self.init(repo: repo, brand: brand) { EmptyView() }
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil) {
+        self.init(repo: repo, brand: brand, profile: profile) { EmptyView() }
     }
 }
 

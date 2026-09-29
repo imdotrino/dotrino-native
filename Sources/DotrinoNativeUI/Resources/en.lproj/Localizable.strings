@@ -7,3 +7,6 @@
 "dotrino_support_bug" = "Report a bug";
 "dotrino_support_share" = "Share";
 "dotrino_support_close" = "Close";
+"dotrino_profile_cta" = "My profile";
+"dotrino_profile_message" = "Your profiles, their devices and your vault are managed in the Dotrino app, with this phone's identity.";
+"dotrino_profile_open" = "Open the Dotrino app";
