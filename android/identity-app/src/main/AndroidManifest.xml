@@ -18,8 +18,9 @@
             android:name=".InfoActivity"
             android:exported="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-            <!-- Sin icono en el inicio: no hace falta abrirla. Las apps de Dotrino la abren con
-                 esta acción (IdentityClient.OPEN_ACTION / open). -->
+            <!-- Sin icono en el inicio: es una app de apoyo, no hace falta abrirla ni hay acceso
+                 desde las demás (dueño, 2026-09-28). Esta acción solo sirve para abrirla a mano
+                 en pruebas: `adb shell am start -a com.dotrino.identity.OPEN`. -->
             <intent-filter>
                 <action android:name="com.dotrino.identity.OPEN" />
                 <category android:name="android.intent.category.DEFAULT" />
