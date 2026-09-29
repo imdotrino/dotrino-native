@@ -17,6 +17,13 @@ final class StoreDiagTests: XCTestCase {
         _ = conn.onMessage { m in print("DIAG msg", m.payload["type"]?.string ?? "?", String(m.payload.text.prefix(200))) }
         let account = Account(id: "b", name: "", profileId: nil, vault: f["vault"]!.string!, proxy: f["proxyUrl"]!.string!, cert: f["cert"]!, deviceId: f["deviceId"]!.string!)
         let vc = VaultClient(account: account, keys: keys, conn: conn)
-        do { let r = try await vc.store(profile, "getThreadDigests", [:]); print("DIAG result", r.text.prefix(300)) } catch { print("DIAG store failed", error) }
+        let backup = VaultBackup(profile: profile, store: VaultBackup.MemoryThreads(), owns: { $0.hasPrefix("{") })
+        do {
+            let r = try await backup.reconcile { m, a in
+                print("DIAG call", m, a.text.prefix(120))
+                let x = try await vc.store(profile, m, a); print("DIAG ok", m); return x
+            }
+            print("DIAG reconciled", r.changed)
+        } catch { print("DIAG reconcile failed", error) }
     }
 }
