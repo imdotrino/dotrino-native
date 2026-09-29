@@ -52,6 +52,27 @@ public final class SealedSession: @unchecked Sendable {
 
     public var onWarn: (String, Error?) -> Void = { _, _ in }
     private var direct: DirectTransport?
+    private var push: PushToken?
+
+    /// An APNs registration: the token, the app's bundle id and the APNs environment.
+    public struct PushToken: Sendable, Equatable {
+        public let token: String, topic: String, env: String
+        public init(token: String, topic: String, env: String) { self.token = token; self.topic = topic; self.env = env }
+    }
+
+    /// This phone's APNs token (`DotrinoPush` gets it). Registered under the profile after EVERY
+    /// identify (tokens rotate, and a proxy change forgets them): the proxy rings the phone when a
+    /// message is queued for this identity while the app is closed.
+    public func setPushToken(_ t: PushToken) {
+        let c: ProxyConnection? = lock.withLock { push = t; return conn }
+        if let c { Task { [weak self] in await self?.registerPush(c) } }
+    }
+
+    private func registerPush(_ c: ProxyConnection) async {
+        guard let t = lock.withLock({ push }) else { return }
+        do { try await c.registerApnsTokenAs(profile.publickey, token: t.token, topic: t.topic, env: t.env) { try self.profile.signData($0) } }
+        catch { onWarn("could not register the push token", error) }
+    }
 
     /// Plugs in the DIRECT ROAD (`DotrinoNativeWebRTC`): what goes by token prefers an open
     /// channel, and the first message to someone opens one underneath. TURN is asked after
@@ -130,6 +151,7 @@ public final class SealedSession: @unchecked Sendable {
                     if let d = lock.withLock({ direct }) {
                         Task { [weak self] in await self?.enableTurn(c, d) }
                     }
+                    Task { [weak self] in await self?.registerPush(c) }
                     fails = 0
                     setStatus(Status(state: "online", url: u, reason: nil))
                     lock.withLock { Array(onlineListeners.values) }.forEach { $0() }

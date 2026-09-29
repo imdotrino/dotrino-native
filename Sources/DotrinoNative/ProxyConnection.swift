@@ -366,6 +366,17 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     /// `getTurnCredentials` of the JS client: temporary ICE servers for the direct road.
     /// Empty when the proxy has no TURN.
+    /// This phone's APNs token under `publickey`, signed by whoever this connection identified
+    /// as (a PROFILE signs through its own policy): the proxy rings the phone — an alert with no
+    /// content, the text comes from the app's own strings — when something is queued for that
+    /// identity. `topic` is the bundle id; `env` is `sandbox` (Xcode builds) or `production`
+    /// (TestFlight, App Store). The same as `registerPushTokenAs` in Android, with APNs.
+    public func registerApnsTokenAs(_ publickey: String, token: String, topic: String, env: String, sign: (JSON) throws -> String) async throws {
+        let sub: JSON = ["kind": "apns", "token": .string(token), "topic": .string(topic), "env": .string(env)]
+        let data: JSON = ["op": "push-subscribe", "publickey": .string(publickey), "subscription": .string(try Canonical.stringify(sub)), "ts": .int(nowMs())]
+        try await request(["type": "push-subscribe", "data": data, "signature": .string(try sign(data))])
+    }
+
     public func turnCredentials(_ publickey: String, sign: (JSON) throws -> String) async throws -> [IceServer] {
         let data: JSON = ["op": "turn-credentials", "publickey": .string(publickey), "ts": .int(nowMs())]
         let res = try await request(["type": "turn-credentials", "data": data, "signature": .string(try sign(data))])
