@@ -31,7 +31,7 @@ final class VaultBackupE2eTests: XCTestCase {
         XCTAssertTrue(phone.t.list("padel.results").isEmpty, "another app's thread came in")
 
         try phone.change { try $0.append(contact, ["id": "n1", "ts": 2000, "dir": "out", "text": "desde el iPhone"]) }
-        _ = phone.change { $0.remove(contact, id: "w2") }
+        _ = try phone.change { $0.remove(contact, id: "w2") }
         _ = try await backup.sync()
 
         let other = VaultBackup.MemoryThreads()
