@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- libwebrtc vigila la red (NetworkMonitor) y, sin este permiso, ABORTA el proceso entero
+     con un SIGABRT en su hilo de red. Es un permiso normal (no se pide al usuario). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+</manifest>

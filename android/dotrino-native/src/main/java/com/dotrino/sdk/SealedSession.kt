@@ -36,6 +36,12 @@ class SealedSession(
 ) {
     companion object {
         const val FAILS_BEFORE_FAILOVER = 3
+        /** `DEFAULT_ICE_SERVERS` of the JS client. */
+        val DEFAULT_STUN = listOf(
+            DirectTransport.IceServer(listOf("stun:stun.l.google.com:19302")),
+            DirectTransport.IceServer(listOf("stun:stun1.l.google.com:19302")),
+            DirectTransport.IceServer(listOf("stun:global.stun.twilio.com:3478")),
+        )
         private const val MAX_BACKOFF_MS = 30_000L
     }
 
@@ -68,6 +74,26 @@ class SealedSession(
 
     var onWarn: (String, Throwable?) -> Unit = { _, _ -> }
 
+    @Volatile private var direct: DirectTransport? = null
+
+    /**
+     * Plugs in the DIRECT ROAD (WebRTC, module `dotrino-webrtc`). From then on, what goes by
+     * token prefers an open channel, and the first message to someone opens one underneath.
+     * TURN credentials are asked after every identify (signed by the profile).
+     */
+    fun useDirect(d: DirectTransport) {
+        direct = d
+        d.bind(
+            selfToken = { conn?.token },
+            signalSend = { to, msg -> runCatching { conn?.sendTo(listOf(to), msg) } },
+            deliver = { from, text ->
+                val c = conn ?: return@bind
+                val payload = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return@bind
+                scope.launch { deliver(c, ProxyConnection.Incoming(from, null, payload)) }
+            },
+        )
+    }
+
     fun onMessage(l: (Message) -> Unit): () -> Unit { messageListeners.add(l); return { messageListeners.remove(l) } }
     fun onStatus(l: (Status) -> Unit): () -> Unit { statusListeners.add(l); return { statusListeners.remove(l) } }
     fun onEvent(l: (ProxyConnection.Event) -> Unit): () -> Unit { eventListeners.add(l); return { eventListeners.remove(l) } }
@@ -95,7 +121,11 @@ class SealedSession(
                 try {
                     c.connect()
                     c.onMessage { inc -> scope.launch { deliver(c, inc) } }
-                    c.onEvent { e -> eventListeners.forEach { runCatching { it(e) } } }
+                    c.onEvent { e ->
+                        // A peer that left takes its direct channel with it (tokens are not reused).
+                        if (e is ProxyConnection.Event.PeerGone) runCatching { direct?.close(e.token) }
+                        eventListeners.forEach { runCatching { it(e) } }
+                    }
                     c.identifyAs(profile.publickey) { profile.signData(it) }
                     conn = c
                     // Without my key announced nobody can seal to me. It is signed by the
@@ -103,6 +133,7 @@ class SealedSession(
                     // that is said instead of pretending.
                     try { c.announceEncPub(profile.publickey, profile.encPub) { profile.signData(it) } }
                     catch (e: Exception) { onWarn("could not announce my encryption key", e) }
+                    direct?.let { d -> scope.launch { enableTurn(c, d) } }
                     fails = 0
                     setStatus(Status("online", u))
                     onlineListeners.forEach { runCatching { it() } }
@@ -135,6 +166,7 @@ class SealedSession(
 
     fun close() {
         closed = true
+        runCatching { direct?.closeAll() }
         runCatching { conn?.close() }
         loop?.cancel()
         scope.cancel()
@@ -143,6 +175,13 @@ class SealedSession(
     private fun live(): ProxyConnection = conn ?: throw SessionError("not connected to the proxy", "disconnected")
 
     private suspend fun deliver(c: ProxyConnection, inc: ProxyConnection.Incoming) {
+        // The signalling of the direct road is a control frame of the transport (like the
+        // greeting): it carries no user content and goes to the WebRTC layer, not the app.
+        if ((inc.payload["t"] as? kotlinx.serialization.json.JsonPrimitive)?.content == DirectTransport.RTC_TAG) {
+            val d = direct
+            if (d != null && inc.from != null) d.handleSignal(inc.from, inc.payload)
+            return
+        }
         if (!sealing.isSealed(inc.payload)) {
             onWarn("dropped a message that arrived unsealed", null)
             return
@@ -173,7 +212,24 @@ class SealedSession(
             val pk = c.pubkeyOfToken(token) ?: throw SessionError("nobody has said whose this token is — greet it first", "no-peer-identity")
             listOf(c.encPubOf(pk))
         }
-        c.sendTo(listOf(token), sealing.seal(payload, keys))
+        val sealed = sealing.seal(payload, keys)
+        val d = direct
+        if (d != null && d.send(token, sealed.toString())) return
+        c.sendTo(listOf(token), sealed)
+        // And try to go direct for the next one, without waiting for anybody.
+        d?.upgrade(token)
+    }
+
+    /**
+     * TURN for the direct road: temporary credentials from the proxy (`turn-credentials`,
+     * signed by the profile), put in front of the default STUN. A proxy without TURN leaves
+     * STUN only; that is not an error.
+     */
+    private suspend fun enableTurn(c: ProxyConnection, d: DirectTransport) {
+        try {
+            val servers = c.turnCredentials(profile.publickey) { profile.signData(it) }
+            if (servers.isNotEmpty()) d.setIceServers(servers + DEFAULT_STUN)
+        } catch (e: Exception) { onWarn("could not get TURN credentials", e) }
     }
 
     /** Sealed, BY PUBKEY (the proxy's 24 h offline queue). [quiet]: queue without ringing. */

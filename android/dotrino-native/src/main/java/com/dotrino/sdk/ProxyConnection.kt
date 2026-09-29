@@ -327,6 +327,27 @@ class ProxyConnection(private val url: String) {
         })
     }
 
+    // ---------- TURN ----------
+
+    /**
+     * `getTurnCredentials` of the JS client: temporary ICE servers from the proxy, for the
+     * direct road. Empty when the proxy has no TURN.
+     */
+    suspend fun turnCredentials(publickey: String, sign: suspend (JsonObject) -> String): List<DirectTransport.IceServer> {
+        val data = buildJsonObject { put("op", "turn-credentials"); put("publickey", publickey); put("ts", System.currentTimeMillis()) }
+        val res = request(buildJsonObject { put("type", "turn-credentials"); put("data", data); put("signature", sign(data)) })
+        if (res["enabled"]?.jsonPrimitive?.content != "true") return emptyList()
+        return (res["iceServers"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val urls = when (val u = o["urls"]) {
+                is JsonPrimitive -> listOf(u.content)
+                is kotlinx.serialization.json.JsonArray -> u.map { it.jsonPrimitive.content }
+                else -> return@mapNotNull null
+            }
+            DirectTransport.IceServer(urls, o["username"]?.jsonPrimitive?.content, o["credential"]?.jsonPrimitive?.content)
+        }
+    }
+
     // ---------- the short code people read out ("give me your code") ----------
 
     data class PairingCode(val code: String, val expiresAt: Long)
