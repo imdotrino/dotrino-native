@@ -40,9 +40,7 @@ public struct DotrinoTopbar<Actions: View>: View {
         self.actions = actions()
     }
 
-    private static let avatarPalette: [Color] = [0x00658C, 0x006B5C, 0x665590, 0x8C4A00, 0x3F6B00, 0x7A3E6B].map {
-        Color(red: Double(($0 >> 16) & 0xFF) / 255, green: Double(($0 >> 8) & 0xFF) / 255, blue: Double($0 & 0xFF) / 255)
-    }
+
 
     public var body: some View {
         HStack(spacing: 10) {
@@ -70,8 +68,7 @@ public struct DotrinoTopbar<Actions: View>: View {
             .clipShape(Capsule())
             .overlay(Capsule().stroke(DotrinoPalette.muted.opacity(0.4)))
             Button { profileOpen = true } label: {
-                let i = profile.map { abs($0.key.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }) % Self.avatarPalette.count }
-                Circle().fill(i.map { Self.avatarPalette[$0] } ?? DotrinoPalette.muted).frame(width: 34, height: 34)
+                Circle().fill(profile.map { AvatarPalette.colors[AvatarPalette.index($0.key)] } ?? DotrinoPalette.muted).frame(width: 34, height: 34)
                     .overlay(Text(profile?.name?.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "👤")
                         .font(.system(size: 15, weight: .bold)).foregroundColor(.white))
             }
@@ -169,4 +166,14 @@ private struct SupportSheet: View {
         .background(DotrinoPalette.bg.ignoresSafeArea())
         .presentationDetents([.medium, .large])
     }
+}
+
+/// The avatar colours (the same six as Android), chosen from the key.
+enum AvatarPalette {
+    static let colors: [Color] = [
+        Color(red: 0x00 / 255, green: 0x65 / 255, blue: 0x8C / 255), Color(red: 0x00 / 255, green: 0x6B / 255, blue: 0x5C / 255),
+        Color(red: 0x66 / 255, green: 0x55 / 255, blue: 0x90 / 255), Color(red: 0x8C / 255, green: 0x4A / 255, blue: 0x00 / 255),
+        Color(red: 0x3F / 255, green: 0x6B / 255, blue: 0x00 / 255), Color(red: 0x7A / 255, green: 0x3E / 255, blue: 0x6B / 255),
+    ]
+    static func index(_ key: String) -> Int { abs(key.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }) % colors.count }
 }
