@@ -362,6 +362,25 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         try send(.object(f))
     }
 
+    // MARK: TURN
+
+    /// `getTurnCredentials` of the JS client: temporary ICE servers for the direct road.
+    /// Empty when the proxy has no TURN.
+    public func turnCredentials(_ publickey: String, sign: (JSON) throws -> String) async throws -> [IceServer] {
+        let data: JSON = ["op": "turn-credentials", "publickey": .string(publickey), "ts": .int(nowMs())]
+        let res = try await request(["type": "turn-credentials", "data": data, "signature": .string(try sign(data))])
+        guard res["enabled"]?.bool == true else { return [] }
+        return (res["iceServers"]?.array ?? []).compactMap { o in
+            let urls: [String]
+            switch o["urls"] {
+            case .string(let u)?: urls = [u]
+            case .array(let a)?: urls = a.compactMap(\.string)
+            default: return nil
+            }
+            return IceServer(urls: urls, username: o["username"]?.string, credential: o["credential"]?.string)
+        }
+    }
+
     // MARK: the short code people read out
 
     public struct PairingCode: Sendable { public let code: String; public let expiresAt: Int64 }

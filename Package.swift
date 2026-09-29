@@ -13,10 +13,18 @@ let package = Package(
         // Los componentes de pantalla del ecosistema en SwiftUI (topbar, idioma). Aparte para
         // que el núcleo no dependa de SwiftUI (CONVENCIONES §16.2: una sola versión nativa).
         .library(name: "DotrinoNativeUI", targets: ["DotrinoNativeUI"]),
+        // EL CAMINO DIRECTO (WebRTC). Aparte porque libwebrtc pesa ~10 MB por arquitectura y no
+        // toda app lo quiere: la que sí, lo añade y hace `session.useDirect(WebRTCDirect())`.
+        .library(name: "DotrinoNativeWebRTC", targets: ["DotrinoNativeWebRTC"]),
+    ],
+    dependencies: [
+        // libwebrtc de Google, compilado (BSD). Sin servicios ni telemetría: la pila del navegador.
+        .package(url: "https://github.com/stasel/WebRTC.git", exact: "153.0.0"),
     ],
     targets: [
         .target(name: "DotrinoNative"),
         .target(name: "DotrinoNativeUI", resources: [.process("Resources")]),
+        .target(name: "DotrinoNativeWebRTC", dependencies: ["DotrinoNative", .product(name: "WebRTC", package: "WebRTC")]),
         .testTarget(
             name: "DotrinoNativeTests",
             dependencies: ["DotrinoNative", "DotrinoNativeUI"],

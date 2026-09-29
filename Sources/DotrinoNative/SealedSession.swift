@@ -47,6 +47,24 @@ public final class SealedSession: @unchecked Sendable {
     public private(set) var status: Status
 
     public var onWarn: (String, Error?) -> Void = { _, _ in }
+    private var direct: DirectTransport?
+
+    /// Plugs in the DIRECT ROAD (`DotrinoNativeWebRTC`): what goes by token prefers an open
+    /// channel, and the first message to someone opens one underneath. TURN is asked after
+    /// every identify (signed by the profile).
+    public func useDirect(_ d: DirectTransport) {
+        lock.withLock { direct = d }
+        d.bind(
+            selfToken: { [weak self] in self?.token },
+            signalSend: { [weak self] to, msg in
+                guard let c = self?.lock.withLock({ self?.conn }) else { return }
+                try? c.sendTo([to], msg)
+            },
+            deliver: { [weak self] from, text in
+                guard let self, let c = self.lock.withLock({ self.conn }), let payload = try? JSON.parse(text), payload.object != nil else { return }
+                Task { await self.deliver(c, ProxyConnection.Incoming(from: from, fromPubkey: nil, payload: payload)) }
+            })
+    }
 
     public init(urls: [String], profile: Profile, app: String) {
         precondition(!urls.isEmpty, "at least one proxy url")
@@ -97,12 +115,17 @@ public final class SealedSession: @unchecked Sendable {
                     }
                     _ = c.onEvent { [weak self] e in
                         guard let self else { return }
+                        // A peer that left takes its direct channel with it (tokens are not reused).
+                        if case .peerGone(let t, _) = e { self.lock.withLock { self.direct }?.close(t) }
                         self.lock.withLock { Array(self.eventListeners.values) }.forEach { $0(e) }
                     }
                     try await c.identifyAs(profile.publickey) { try self.profile.signData($0) }
                     lock.withLock { conn = c }
                     do { try await c.announceEncPub(profile.publickey, profile.encPub) { try self.profile.signData($0) } }
                     catch { onWarn("could not announce my encryption key", error) }
+                    if let d = lock.withLock({ direct }) {
+                        Task { [weak self] in await self?.enableTurn(c, d) }
+                    }
                     fails = 0
                     setStatus(Status(state: "online", url: u, reason: nil))
                     lock.withLock { Array(onlineListeners.values) }.forEach { $0() }
@@ -139,6 +162,7 @@ public final class SealedSession: @unchecked Sendable {
     }
 
     public func close() {
+        lock.withLock { direct }?.closeAll()
         let c: ProxyConnection? = lock.withLock { closed = true; return conn }
         c?.close()
         loop?.cancel()
@@ -149,7 +173,19 @@ public final class SealedSession: @unchecked Sendable {
         return c
     }
 
+    private func enableTurn(_ c: ProxyConnection, _ d: DirectTransport) async {
+        do {
+            let servers = try await c.turnCredentials(profile.publickey) { try self.profile.signData($0) }
+            if !servers.isEmpty { d.setIceServers(servers + IceServer.defaultStun) }
+        } catch { onWarn("could not get TURN credentials", error) }
+    }
+
     private func deliver(_ c: ProxyConnection, _ inc: ProxyConnection.Incoming) async {
+        // The direct road's signalling is a transport control frame: to WebRTC, not the app.
+        if inc.payload["t"]?.string == rtcTag {
+            if let d = lock.withLock({ direct }), let from = inc.from { d.handleSignal(from: from, inc.payload) }
+            return
+        }
         guard sealing.isSealed(inc.payload) else { onWarn("dropped a message that arrived unsealed", nil); return }
         // Sealed to somebody else, or tampered with: staying quiet is the point.
         guard let opened = try? sealing.open(inc.payload) else { return }
@@ -176,7 +212,12 @@ public final class SealedSession: @unchecked Sendable {
             }
             keys = [try await c.encPubOf(pk)]
         }
-        try c.sendTo([token], try sealing.seal(payload, to: keys))
+        let sealed = try sealing.seal(payload, to: keys)
+        let d = lock.withLock { direct }
+        if let d, d.send(token, sealed.text) { return }
+        try c.sendTo([token], sealed)
+        // And try to go direct for the next one, without waiting for anybody.
+        d?.upgrade(token)
     }
 
     /// Sealed, BY PUBKEY (the proxy's 24 h offline queue). `quiet`: queue without ringing.
