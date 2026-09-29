@@ -20,6 +20,6 @@
     <string name="dotrino_identity_needed_later">Not now</string>
     <string name="dotrino_identity_needed_note">Free and without ads. You install it once and every Dotrino app uses it.</string>
     <string name="dotrino_profile_cta">My profile</string>
-    <string name="dotrino_profile_message">Your profiles, their devices and your vault are managed in the Dotrino app, with this phone's identity.</string>
+    <string name="dotrino_profile_message">Your profiles, their devices and your vault are managed in the Dotrino app, with this phone\'s identity.</string>
     <string name="dotrino_profile_open">Open in the Dotrino app</string>
 </resources>
