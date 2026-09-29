@@ -84,6 +84,23 @@ const { genesisActa, sealActa } = await import(join(id, 'acta.js'))
 const repSign = await makeDeviceKey(); const repEnc = await makeDeviceEncKey()
 const repActa = await sealActa({ acta: genesisActa({ pub: repSign.publickey, encPub: repEnc.encPublickey, label: 'phone' }), privateJwk: repSign.privateJwk })
 
+// 5e) Almacén: la HUELLA de un hilo y el PLAN de conciliación, tal cual los calculan el
+//     navegador y la bóveda (`@dotrino/store/core` + `vault-sync.js`). Si el teléfono no da
+//     byte por byte la misma huella, la sincronización se repite para siempre en silencio.
+const storeCore = await import(join(here, '../../dotrino-store/store/core.js'))
+const { planThread } = await import(join(here, '../../dotrino-store/src/vault-sync.js'))
+const digestCases = [
+  [{ id: 'b', ts: 2 }, { id: 'a', ts: 1 }, { id: 'ñ', ts: 1790000000000 }, { id: 'Z', ts: 0 }, { id: '10', ts: 3 }],
+  [{ id: 'solo', ts: 5, text: 'lo demás no cuenta' }],
+]
+const digests = []
+for (const entries of digestCases) digests.push({ entries, digest: await storeCore.threadDigest(entries) })
+const planCases = [
+  { local: { items: [['a', 1], ['b', 5], ['c', 3]], tombs: [['d', 2, 9]] }, remote: { items: [['a', 1], ['b', 4], ['d', 2], ['e', 7]], tombs: [['c', 3, 8]] }, max: 1000 },
+  { local: { items: [['x', 10], ['y', 20]], tombs: [] }, remote: { items: [['old', 5], ['new', 30]], tombs: [] }, max: 2 },
+]
+const plans = planCases.map((c) => ({ ...c, plan: planThread(c.local, c.remote, c.max) }))
+
 // 6) Acta: qué puede un miembro (capacidades, renuncias del acta y propias, lo desconocido).
 const { memberCan } = await import(join(id, 'acta.js'))
 const actaA = {
@@ -114,6 +131,7 @@ writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), 
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
   peers: { card, cardDevPub: cardDev.publickey, cardDevEncPub: cardDevEnc.encPublickey, endorsement, subject: ratedSubject },
+  store: { digests, plans },
   actaProfile: { signPrivateJwk: repSign.privateJwk, encPrivateJwk: repEnc.encPrivateJwk, acta: repActa },
   acta: { acta: actaA, cases: acta },
   broadcast,

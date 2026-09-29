@@ -7,6 +7,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -133,6 +134,21 @@ class VaultClient(
         account = account.copy(cert = cert)
         onRenewed(account)
         return account
+    }
+
+    /**
+     * THE STORE IN THE VAULT (`requestStore` + `vaultStore` of the identity): [method] with
+     * [args] ENCRYPTED with the profile's content key — the proxy never sees them — and the
+     * answer opened with the keyring. Without the content key it stops (`no-content-key`)
+     * instead of sending in the clear.
+     */
+    suspend fun store(profile: Profile, method: String, args: JsonObject): JsonElement {
+        val (gen, cek) = profile.contentKey() ?: throw VaultError("this device does not hold the profile content key yet", "no-content-key")
+        val enc = Crypto.encryptWithCek(cek, gen, args.toString())
+        val res = rpc("vault.store", "vault.store.result", buildJsonObject { put("op", "store"); put("method", method); put("enc", enc) })
+        val sealed = (res["result"] as? JsonObject)?.get("__enc") as? JsonObject
+            ?: throw VaultError("the vault replied to the store without encrypting it", "vault-reply-unsealed")
+        return json.parseToJsonElement(profile.decryptWithKeyring(sealed))
     }
 
     private suspend fun secrets(data: JsonObject): JsonObject = withPaper {

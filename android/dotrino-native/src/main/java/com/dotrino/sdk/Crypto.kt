@@ -128,6 +128,14 @@ object Crypto {
         return String(aesGcmOpen(fromB64(cek), fromB64(iv), fromB64(ct)), Charsets.UTF_8)
     }
 
+    /** `encryptWithCek`: `{ gen, iv, ct }` with a content key given as base64. */
+    fun encryptWithCek(cek: String, gen: Int, plaintext: String): JsonObject {
+        val (iv, ct) = aesGcmSeal(fromB64(cek), plaintext.toByteArray(Charsets.UTF_8))
+        return kotlinx.serialization.json.buildJsonObject {
+            put("gen", kotlinx.serialization.json.JsonPrimitive(gen)); put("iv", kotlinx.serialization.json.JsonPrimitive(b64(iv))); put("ct", kotlinx.serialization.json.JsonPrimitive(b64(ct)))
+        }
+    }
+
     /** What the vault seals to the approver (the command of a request): a wrap plus an envelope. */
     suspend fun openSealed(wrap: JsonObject, envelope: JsonObject, keys: DeviceKeys): String =
         decryptWithCek(openWrap(wrap, keys), envelope)

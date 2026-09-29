@@ -31,9 +31,38 @@ public final class Profile: @unchecked Sendable {
     public let pid: String?
     /// The last sealed actas (`dotrino.identity.acta.history`): the links of the sealer chain.
     private let history: [JSON]
+    /// The link with the owner's vault, when this phone is paired (`dotrino.identity.vault.cert`).
+    public let vault: VaultLink?
 
-    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil, history: [JSON] = []) {
-        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid; self.history = history
+    /// `{ cert, master, proxy, deviceId }`: whom to ask, through which proxy, and my paper.
+    public struct VaultLink: Sendable {
+        public let master: String, proxy: String, cert: JSON, deviceId: String
+        public init(master: String, proxy: String, cert: JSON, deviceId: String) { self.master = master; self.proxy = proxy; self.cert = cert; self.deviceId = deviceId }
+    }
+
+    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil, history: [JSON] = [], vault: VaultLink? = nil) {
+        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid; self.history = history; self.vault = vault
+    }
+
+    /// This device's key, for the vault client (the phone talks to its vault as the profile's key).
+    var deviceKeys: DeviceKeys { keys }
+
+    /// `myContentKey`: the NEWEST generation of the content key wrapped to me. Nil = not held (yet).
+    public func contentKey() -> (gen: Int, cek: String)? {
+        let ring = (acta?["keyring"]?.array ?? []).sorted { ($0["gen"]?.int ?? 0) > ($1["gen"]?.int ?? 0) }
+        for g in ring {
+            guard let w = g["wraps"]?[publickey], let gen = g["gen"]?.int, let cek = try? Crypto.openWrap(w, keys: keys) else { continue }
+            return (Int(gen), cek)
+        }
+        return nil
+    }
+
+    /// `decryptWithKeyring`: content encrypted with any generation this device holds.
+    public func decryptWithKeyring(_ envelope: JSON) throws -> String {
+        guard let g = (acta?["keyring"]?.array ?? []).first(where: { $0["gen"]?.int == envelope["gen"]?.int }), let w = g["wraps"]?[publickey] else {
+            throw ProfileError("this device does not hold the key for that content generation", code: "no-content-key")
+        }
+        return try Crypto.decryptWithCek(try Crypto.openWrap(w, keys: keys), envelope: envelope)
     }
 
     /// WHO I AM to others: the acta's `profileId` (a rating from the phone and one from the PC
@@ -90,12 +119,20 @@ public final class Profile: @unchecked Sendable {
         let acta = items["kv:" + scoped(pid, "dotrino.identity.acta")].flatMap { try? JSON.parse($0) }
         let renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")].flatMap { try? JSON.parse($0) }?.array ?? []
         let history = items["kv:" + scoped(pid, "dotrino.identity.acta.history")].flatMap { try? JSON.parse($0) }?.array ?? []
-        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid, history: history)
+        // The vault link, only when the device that talks to the vault IS this profile's key.
+        var link: VaultLink?
+        if let v = items["kv:" + scoped(pid, "dotrino.identity.vault.cert")].flatMap({ try? JSON.parse($0) }),
+           let master = v["master"]?.string, let proxy = v["proxy"]?.string, let cert = v["cert"], cert.object != nil {
+            let d = items["kv:" + scoped(pid, "dotrino.identity.vault.device")].flatMap { try? JSON.parse($0) }
+            let same = d == nil || d?["useIdentityKey"]?.bool == true || (Delegation.samePubkey(d?["publickey"]?.string, pub) && d?["privateJwk"] == nil)
+            if same { link = VaultLink(master: master, proxy: proxy, cert: cert, deviceId: v["deviceId"]?.string ?? "") }
+        }
+        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid, history: history, vault: link)
     }
 
     /// For tests and headless tools: a profile from keys in hand.
-    public static func of(_ keys: DeviceKeys, acta: JSON? = nil) -> Profile {
-        Profile(publickey: keys.publickey, encPub: keys.encPub, acta: acta, renounces: [], keys: keys)
+    public static func of(_ keys: DeviceKeys, acta: JSON? = nil, vault: VaultLink? = nil) -> Profile {
+        Profile(publickey: keys.publickey, encPub: keys.encPub, acta: acta, renounces: [], keys: keys, vault: vault)
     }
 
     /// `encKeyId` of the identity: the first 16 hex of the key's id.

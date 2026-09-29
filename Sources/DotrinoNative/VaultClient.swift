@@ -108,6 +108,18 @@ public final class VaultClient: @unchecked Sendable {
         return try await answer.wait(timeout: timeout, onTimeout: VaultError("the vault did not reply (is it running?)", code: "vault-no-reply"))
     }
 
+    /// THE STORE IN THE VAULT: [method] with [args] ENCRYPTED with the profile's content key,
+    /// and the answer opened with the keyring. Without the key it stops (`no-content-key`).
+    public func store(_ profile: Profile, _ method: String, _ args: JSON) async throws -> JSON {
+        guard let (gen, cek) = profile.contentKey() else { throw VaultError("this device does not hold the profile content key yet", code: "no-content-key") }
+        let enc = try Crypto.encryptWithCek(cek, gen: gen, args.text)
+        let res = try await rpc("vault.store", "vault.store.result", ["op": "store", "method": .string(method), "enc": enc])
+        guard let sealed = res["result"]?["__enc"], sealed.object != nil else {
+            throw VaultError("the vault replied to the store without encrypting it", code: "vault-reply-unsealed")
+        }
+        return try JSON.parse(try profile.decryptWithKeyring(sealed))
+    }
+
     /// `unauthorized: <reason>` → the reason, which is what can be acted on.
     static func codeOf(_ msg: String) -> String {
         guard let r = msg.range(of: #"^unauthorized: ([\w-]+)"#, options: .regularExpression) else { return "vault-error" }

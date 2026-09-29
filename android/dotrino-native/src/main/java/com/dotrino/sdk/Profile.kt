@@ -35,7 +35,11 @@ class Profile private constructor(
     val pid: String? = null,
     /** The last sealed actas (`dotrino.identity.acta.history`): the links of the sealer chain. */
     private val history: JsonArray = JsonArray(emptyList()),
+    /** The link with the owner's vault, when this phone is paired (`dotrino.identity.vault.cert`). */
+    val vault: VaultLink? = null,
 ) {
+    /** `{ cert, master, proxy, deviceId }`: whom to ask (the vault's key), through which proxy, and my paper. */
+    data class VaultLink(val master: String, val proxy: String, val cert: JsonObject, val deviceId: String)
     class ProfileError(message: String, val code: String) : Exception(message)
 
     companion object {
@@ -65,11 +69,30 @@ class Profile private constructor(
             val acta = items["kv:" + scoped(pid, "dotrino.identity.acta")]?.let { json.parseToJsonElement(it) as? JsonObject }
             val renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
             val history = items["kv:" + scoped(pid, "dotrino.identity.acta.history")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
-            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid, history)
+            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid, history, vaultLinkOf(items, pid, publickey))
+        }
+
+        /**
+         * The vault link, only when the device that talks to the vault IS this profile's key
+         * (`useIdentityKey`, what the phone pairs with). An old pairing with a key of its own
+         * cannot be used from here, and that is said by leaving the link empty.
+         */
+        private fun vaultLinkOf(items: Map<String, String>, pid: String, publickey: String): VaultLink? {
+            val v = items["kv:" + scoped(pid, "dotrino.identity.vault.cert")]?.let { json.parseToJsonElement(it) as? JsonObject } ?: return null
+            val d = items["kv:" + scoped(pid, "dotrino.identity.vault.device")]?.let { json.parseToJsonElement(it) as? JsonObject }
+            val sameKey = d == null || (d["useIdentityKey"] as? JsonPrimitive)?.content == "true" ||
+                ((d["publickey"] as? JsonPrimitive)?.content == publickey && d["privateJwk"] == null)
+            if (!sameKey) return null
+            return VaultLink(
+                master = (v["master"] as? JsonPrimitive)?.content ?: return null,
+                proxy = (v["proxy"] as? JsonPrimitive)?.content ?: return null,
+                cert = v["cert"] as? JsonObject ?: return null,
+                deviceId = (v["deviceId"] as? JsonPrimitive)?.content ?: "",
+            )
         }
 
         /** For tests and headless tools: a profile from keys in hand. */
-        fun of(keys: DeviceKeys, acta: JsonObject? = null) = Profile(keys.publickey, keys.encPub, acta, JsonArray(emptyList()), keys)
+        fun of(keys: DeviceKeys, acta: JsonObject? = null, vault: VaultLink? = null) = Profile(keys.publickey, keys.encPub, acta, JsonArray(emptyList()), keys, vault = vault)
 
         /** `encKeyId` of the identity: the first 16 hex of the key's id. */
         fun encKeyId(encPub: String) = Delegation.pubkeyId(encPub).substring(0, 16)
@@ -114,6 +137,34 @@ class Profile private constructor(
             put("signature", JsonPrimitive(signature)); put("publickey", JsonPrimitive(publickey))
             put("profileId", JsonPrimitive(profileId)); put("chain", sealerChain())
         }
+    }
+
+    /** This device's key, for the vault client (the phone talks to its vault as the profile's key). */
+    internal val deviceKeys: DeviceKeys get() = keys
+
+    /**
+     * `myContentKey` of the identity: the NEWEST generation of the profile's content key that
+     * is wrapped to me, from the acta's keyring. Null = this device does not hold it (yet).
+     */
+    suspend fun contentKey(): Pair<Int, String>? {
+        val ring = (acta?.get("keyring") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .sortedByDescending { (it["gen"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0 }
+        for (g in ring) {
+            val w = (g["wraps"] as? JsonObject)?.get(publickey) as? JsonObject ?: continue
+            val gen = (g["gen"] as? JsonPrimitive)?.content?.toIntOrNull() ?: continue
+            return try { gen to Crypto.openWrap(w, keys) } catch (_: Exception) { continue }
+        }
+        return null
+    }
+
+    /** `decryptWithKeyring`: content encrypted with any generation this device holds. */
+    suspend fun decryptWithKeyring(envelope: JsonObject): String {
+        val gen = (envelope["gen"] as? JsonPrimitive)?.content?.toIntOrNull()
+        val g = (acta?.get("keyring") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .firstOrNull { (it["gen"] as? JsonPrimitive)?.content?.toIntOrNull() == gen }
+        val w = (g?.get("wraps") as? JsonObject)?.get(publickey) as? JsonObject
+            ?: throw ProfileError("this device does not hold the key for that content generation", "no-content-key")
+        return Crypto.decryptWithCek(Crypto.openWrap(w, keys), envelope)
     }
 
     /** May this device sign for the profile? No acta = a profile of one device, which signs. */

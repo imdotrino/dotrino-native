@@ -99,6 +99,15 @@ public enum Crypto {
     }
 
     /// AES-GCM with a fresh 12-byte iv: `(iv, ct+tag)`, as WebCrypto gives them.
+    /// SHA-256 in lowercase hex.
+    public static func sha256Hex(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+
+    /// `encryptWithCek`: `{ gen, iv, ct }` with a content key given as base64.
+    public static func encryptWithCek(_ cek: String, gen: Int, _ plaintext: String) throws -> JSON {
+        let (iv, ct) = try aesGcmSeal(key: try fromB64(cek), plain: Data(plaintext.utf8))
+        return ["gen": .int(Int64(gen)), "iv": .string(b64(iv)), "ct": .string(b64(ct))]
+    }
+
     static func aesGcmSeal(key: Data, plain: Data) throws -> (Data, Data) {
         let box = try AES.GCM.seal(plain, using: SymmetricKey(data: key), nonce: AES.GCM.Nonce())
         return (Data(box.nonce), box.ciphertext + box.tag)
