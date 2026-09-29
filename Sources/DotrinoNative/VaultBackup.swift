@@ -85,8 +85,8 @@ public final class VaultBackup: @unchecked Sendable {
         }
 
         if !pushRefs.isEmpty || !pushTombs.isEmpty {
-            let entries = try store.read { t in pushRefs.mapValues { t.entries($0.key, $0.value) } }
-            let tombs = try store.read { t in pushTombs.mapValues { t.tombRows($0.key, $0.value) } }
+            let entries = try store.read { t in Dictionary(uniqueKeysWithValues: pushRefs.map { ($0.key, t.entries($0.key, $0.value)) }) }
+            let tombs = try store.read { t in Dictionary(uniqueKeysWithValues: pushTombs.map { ($0.key, t.tombRows($0.key, $0.value)) }) }
             for batch in batches(entries, tombs, &tooLarge) { _ = try await call("importThreads", batch) }
         }
 
