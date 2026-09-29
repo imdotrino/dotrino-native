@@ -89,7 +89,7 @@ public final class Profile: @unchecked Sendable {
 
     /// `profileCard` of the identity: the SIGNED list of this person's devices, from the acta.
     /// Others use it to seal to every device and not just this one. Nil without an acta.
-    public var card: JSON? { acta?["card"].flatMap { $0.object != nil ? $0 : nil } }
+    public var card: JSON? { acta?["card"]?.objectValue }
 
     public static let current = "dotrino.identity.current"
 

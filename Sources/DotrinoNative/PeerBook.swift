@@ -130,7 +130,7 @@ public final class PeerBook: @unchecked Sendable {
     public func adoptPeerCard(_ card: JSON) throws -> CardAdoption {
         try change { peers in
             guard let profileId = card["profileId"]?.string else { return CardAdoption(adopted: false, reason: "firma-invalida", devices: 0) }
-            let current = peers[profileId]?["card"].flatMap { $0.object != nil ? $0 : nil }
+            let current = peers[profileId]?["card"]?.objectValue
             let devices = current?["keys"]?.array?.count ?? 0
             let seq = card["seq"]?.int ?? 0, curSeq = current?["seq"]?.int ?? 0
             let reason: String
@@ -189,7 +189,7 @@ public final class PeerBook: @unchecked Sendable {
     /// `getRatingsForSubject`: what I can tell others about `subject`.
     public func ratingsFor(_ subject: String) throws -> (mine: JSON?, endorsements: [JSON]) {
         let r = try get(subject)
-        let mine = r?["myRating"].flatMap { $0.object != nil ? $0 : nil }
+        let mine = r?["myRating"]?.objectValue
         return (mine, (r?["endorsements"]?.array ?? []).filter { $0.object != nil })
     }
 

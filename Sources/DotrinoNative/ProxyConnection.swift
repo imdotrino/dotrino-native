@@ -201,7 +201,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             let payload: JSON?
             switch o["message"] {
             case .object?: payload = o["message"]
-            case .string(let s)?: payload = (try? JSON.parse(s)).flatMap { $0.object != nil ? $0 : nil }
+            case .string(let s)?: payload = (try? JSON.parse(s))?.objectValue
             default: payload = nil
             }
             guard let payload else { return }

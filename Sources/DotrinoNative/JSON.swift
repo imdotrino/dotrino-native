@@ -53,6 +53,14 @@ public enum JSON: Equatable, Sendable {
     public var object: [String: JSON]? { if case .object(let o) = self { return o }; return nil }
     public var array: [JSON]? { if case .array(let a) = self { return a }; return nil }
 
+    /// This value if it is an OBJECT, and no value otherwise. Written with `Optional.none` on
+    /// purpose: `cond ? x : nil` turns that `nil` into `JSON.null` (JSON takes `nil` as a
+    /// literal), which is a value — a loop that waited for «no more pages» never ended for that.
+    public var objectValue: JSON? {
+        if case .object = self { return self }
+        return Optional<JSON>.none
+    }
+
     /// Serialized to send. Same bytes as the canonical form when there are no fractions; a
     /// fraction is written as JS would (enough for relaying a value, never for signing it).
     public var text: String {

@@ -30,3 +30,14 @@ final class StoreCoreTests: XCTestCase {
         }
     }
 }
+
+/// `cond ? x : nil` with JSON makes `JSON.null`, not «no value»: the backup looped forever on it.
+final class JSONNilTests: XCTestCase {
+    func testObjectValueIsNoValueForNull() {
+        XCTAssertNil(JSON.null.objectValue)
+        XCTAssertNil(JSON.string("x").objectValue)
+        XCTAssertNotNil(JSON.object([:]).objectValue)
+        let page: JSON = ["rest": .null]
+        XCTAssertNil(page["rest"]?.objectValue)
+    }
+}

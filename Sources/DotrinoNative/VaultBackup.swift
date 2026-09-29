@@ -99,7 +99,7 @@ public final class VaultBackup: @unchecked Sendable {
                 var incoming: [String: [JSON]] = [:]
                 for (k, v) in page["threads"]?.object ?? [:] { incoming[k] = (v.array ?? []).filter { $0.object != nil } }
                 if !incoming.isEmpty { changed.formUnion(try store.change { $0.merge(incoming) }) }
-                refs = page["rest"].flatMap { $0.object != nil ? $0 : nil }
+                refs = page["rest"]?.objectValue
             }
         }
         return Result(changed: changed, tooLarge: tooLarge)
