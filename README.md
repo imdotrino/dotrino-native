@@ -26,7 +26,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `ProxyConnection.kt` | `connected` / `identify` / `push-subscribe` / mensaje por pubkey | `proxy-client/src/client.js` |
 | `VaultClient.kt` | `approvals` / `approve` / `deny` / `grants` / `renew` | `vault/remote.js` `vaultRpc` |
 | `AccountStore.kt` | las cuentas en disco, cifradas con una llave del Keystore | — |
-| `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, sellado; una caché por app | `@dotrino/store` (sin el espacio por perfil ni el respaldo en la bóveda, todavía) |
+| `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, lápidas, sellado; una caché por app | `@dotrino/store` (el respaldo en la bóveda es `VaultBackup`) |
 
 **Hablar como el perfil del teléfono** (para compartir en vivo y lo que venga):
 
@@ -53,11 +53,19 @@ del usuario por mensaje dirigido — CONVENCIONES §4.1):
 | `SealedSession` | una conexión que se mantiene (reconecta, re-identifica, re-anuncia la llave, cambia de proxio tras 3 fallos) y exige el sellado en las dos direcciones; código corto (`requestPairingCode`/`redeemPairingCode`) y `whoIs` | `WebSocketProxyClient` con `requireSealed` |
 | `PeerBook` | el libro de contactos del perfil (el MISMO registro que la identidad: `peers:peers.<pid>.v1`), tarjetas de perfil, calificaciones firmadas y avales verificados | `vault/peerStore.js` + `vault/core.js` |
 | `DirectTransport` | el camino directo (escalones 2 y 3): la interfaz; libwebrtc va aparte en **`dotrino-webrtc`** (Android) / **`DotrinoNativeWebRTC`** (iOS) porque pesa ~10 MB por arquitectura | `webrtc.js` |
+| `Reputation` | el registro de reputación (`rep.dotrino.com`): calificar por eje firmado con la cadena del acta, releer lo propio y ponderar por la red de confianza | `createVaultReputation` |
+| `VaultBackup` | el respaldo del almacén en la bóveda: concilia por huella por hilo, solo los hilos de la app, cifrado con la clave de contenido | `@dotrino/store` `vault-sync.js` + `store/core.js` |
+| `Compat` | declarar la versión y juzgar la del otro (§14) | `@dotrino/compat` |
 | `DotrinoQr` / `QrScanView` · `DotrinoQR` / `DotrinoQRScanner` | mostrar y leer QR, todo en el aparato (Android: ZXing core; iOS: CoreImage + AVFoundation) | `@dotrino/qr` |
 
 El camino directo se probó contra el pilar JS real (`test-vectors/e2e-direct.mjs` +
 `DirectE2eTest` en el emulador y `DirectE2eTests` en el simulador): el primer mensaje sale por
 el proxio, el canal se abre por debajo y el siguiente va por WebRTC, sellado igual.
+
+El respaldo se probó contra una bóveda de verdad (`test-vectors/e2e-store.mjs` +
+`VaultBackupE2eTest`/`VaultBackupE2eTests`), y sus reglas contra el propio pilar (huella y plan en
+`vectors.json`). La barra nativa lleva el **botón de perfil** (§6.1): abre la app Dotrino, que es
+donde el teléfono administra sus perfiles.
 
 **Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
 Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
