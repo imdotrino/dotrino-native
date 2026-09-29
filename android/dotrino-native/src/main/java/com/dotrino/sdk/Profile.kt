@@ -31,6 +31,8 @@ class Profile private constructor(
     private val acta: JsonObject?,
     private val renounces: JsonArray,
     private val keys: DeviceKeys,
+    /** The id of this profile in the identity's store (`dotrino.identity.current`); null for a profile made in hand. */
+    val pid: String? = null,
 ) {
     class ProfileError(message: String, val code: String) : Exception(message)
 
@@ -60,7 +62,7 @@ class Profile private constructor(
             val encPub = enc.getValue("publicJwk").jsonObject.toString()
             val acta = items["kv:" + scoped(pid, "dotrino.identity.acta")]?.let { json.parseToJsonElement(it) as? JsonObject }
             val renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
-            return Profile(publickey, encPub, acta, renounces, keysFor(kid))
+            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid)
         }
 
         /** For tests and headless tools: a profile from keys in hand. */
@@ -69,6 +71,13 @@ class Profile private constructor(
         /** `encKeyId` of the identity: the first 16 hex of the key's id. */
         fun encKeyId(encPub: String) = Delegation.pubkeyId(encPub).substring(0, 16)
     }
+
+    /**
+     * `profileCard` of the identity: the SIGNED list of this person's devices (their keys),
+     * from the acta. Others use it to seal to every device and not just this one. Null for a
+     * profile of one device, with no acta.
+     */
+    val card: JsonObject? get() = acta?.get("card") as? JsonObject
 
     /** May this device sign for the profile? No acta = a profile of one device, which signs. */
     val canSign: Boolean get() = acta == null || Acta.memberCan(acta, publickey, "sign", renounces)

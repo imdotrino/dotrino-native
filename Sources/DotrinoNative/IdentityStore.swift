@@ -39,6 +39,15 @@ public final class IdentityStore: @unchecked Sendable {
         return try load()
     }
 
+    /// Everything, READ AGAIN from disk: another app of the team may have written since this
+    /// process last looked (the store is shared through the App Group). Use it before a
+    /// read-modify-write of a record other apps also change (the peer book).
+    public func fresh() throws -> [String: String] {
+        sealed.lock.lock(); defer { sealed.lock.unlock() }
+        cache = nil
+        return try load()
+    }
+
     public func set(_ k: String, _ v: String) throws {
         sealed.lock.lock(); defer { sealed.lock.unlock() }
         var m = try load()

@@ -25,6 +25,24 @@ class PhoneIdentity(context: Context) {
         return Profile.load(items) { kid -> RemoteKeys.open(c, kid) }
     }
 
+    /**
+     * The address book of [profile] (the same record the identity and every other app of the
+     * phone use), read and written through the identity app.
+     */
+    fun peerBook(profile: Profile): PeerBook {
+        val c = client ?: IdentityClient(app).also { client = it }
+        val k = "peers:" + PeerBook.key(profile.pid)
+        return PeerBook(object : PeerBook.Storage {
+            override suspend fun load(): String? =
+                ((c.call("storeLoad")["items"] as? JsonObject)?.get(k))?.jsonPrimitive?.content
+            override suspend fun save(text: String) {
+                c.call("storeSet", kotlinx.serialization.json.buildJsonObject {
+                    put("k", kotlinx.serialization.json.JsonPrimitive(k)); put("v", kotlinx.serialization.json.JsonPrimitive(text))
+                })
+            }
+        }, profile)
+    }
+
     fun close() { client?.close(); client = null }
 
     companion object {

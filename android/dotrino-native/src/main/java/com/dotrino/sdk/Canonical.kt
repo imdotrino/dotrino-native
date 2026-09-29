@@ -20,6 +20,8 @@ import kotlinx.serialization.json.longOrNull
  * breaks a signature silently. A fraction throws instead.
  */
 object Canonical {
+    private val PLAIN_DECIMAL = Regex("^-?(0|[1-9][0-9]*)\\.[0-9]*[1-9]$")
+
     fun stringify(e: JsonElement): String = StringBuilder().also { write(e, it) }.toString()
 
     private fun write(e: JsonElement, out: StringBuilder) {
@@ -43,7 +45,12 @@ object Canonical {
                 e.isString -> quote(e.content, out)
                 e.booleanOrNull != null -> out.append(e.content)
                 e.longOrNull != null -> out.append(e.longOrNull.toString())
-                else -> throw IllegalArgumentException("canonical: non-integer number ${e.content} is not supported")
+                // A DECIMAL (a rating of 4.5) is written exactly as JS writes it: plain
+                // notation, shortest form, no trailing zeros. That is the text the number
+                // arrives as from JS, and what `JsonPrimitive(4.5)` holds. Anything else
+                // (an exponent, «4.50») cannot be guaranteed equal and is refused.
+                PLAIN_DECIMAL.matches(e.content) -> out.append(e.content)
+                else -> throw IllegalArgumentException("canonical: number ${e.content} cannot be written as JS writes it")
             }
         }
     }

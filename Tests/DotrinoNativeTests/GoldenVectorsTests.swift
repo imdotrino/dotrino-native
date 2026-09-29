@@ -39,8 +39,10 @@ final class GoldenVectorsTests: XCTestCase {
         }
     }
 
-    func testCanonicalRefusesFractions() {
-        XCTAssertThrowsError(try Canonical.stringify(["a": .double(1.5)]))
+    /// Decimals as JS writes them (a rating of 4.5); what it would write differently is refused.
+    func testCanonicalDecimalsOnlyAsJsWritesThem() throws {
+        XCTAssertEqual(try Canonical.stringify(["a": .double(1.5)]), #"{"a":1.5}"#)
+        XCTAssertThrowsError(try Canonical.stringify(["a": .double(1e-7)]))
     }
 
     func testASignatureMadeByThePilarVerifiesHere() {

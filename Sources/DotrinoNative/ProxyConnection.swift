@@ -49,6 +49,9 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         public let from: String?
         public let fromPubkey: String?
         public let payload: JSON
+        /// It waited in the proxy's offline queue (and since when).
+        public var queued: Bool = false
+        public var queuedAt: Int64? = nil
     }
 
     private let url: URL
@@ -56,6 +59,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     private var session: URLSession!
     private var ws: URLSessionWebSocketTask?
     private let connected = OneShot<String>()
+    private let ended = OneShot<String>()
     private var pending: [String: OneShot<JSON>] = [:]
     private var nextId = 1
     private var listeners: [UUID: (Incoming) -> Void] = [:]
@@ -128,6 +132,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         die("closed by us")
     }
 
+    /// Suspends until this connection dies, and says why.
+    public func awaitClosed() async -> String {
+        (try? await ended.wait(timeout: 300_000_000 /* ~10 years: no deadline, and it must fit UInt64 in ns */, onTimeout: ProxyError("never", code: "timeout"))) ?? "closed"
+    }
+
     private func die(_ reason: String) {
         lock.lock()
         if _closed != nil { lock.unlock(); return }
@@ -136,6 +145,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         pending.removeAll()
         lock.unlock()
         let e = ProxyError(reason, code: "disconnected")
+        ended.finish(.success(reason))
         connected.finish(.failure(e))
         all.forEach { $0.finish(.failure(e)) }
         // The session holds its delegate (this object) until invalidated: without this every
@@ -200,7 +210,8 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
                 if let from = o["from"]?.string { onHello(from, payload) }
                 return
             }
-            let inc = Incoming(from: o["from"]?.string, fromPubkey: o["from_publickey"]?.string, payload: payload)
+            let inc = Incoming(from: o["from"]?.string, fromPubkey: o["from_publickey"]?.string, payload: payload,
+                               queued: o["queued"]?.bool ?? false, queuedAt: o["queued_at"]?.int)
             lock.lock(); let ls = Array(listeners.values); lock.unlock()
             ls.forEach { $0(inc) }
         case "disconnected":
@@ -343,8 +354,35 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         return enc
     }
 
-    /// A directed message to a key. The payload travels as a JSON string, like the JS client sends it.
-    public func sendByPubkey(_ to: String, _ payload: JSON) throws {
-        try send(["to_publickey": [.string(to)], "message": .string(payload.text)])
+    /// A directed message to a key. The payload travels as a JSON string, like the JS client
+    /// sends it. [quiet]: queued the same, but the proxy does not ring their phone.
+    public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false) throws {
+        var f: [String: JSON] = ["to_publickey": [.string(to)], "message": .string(payload.text)]
+        if quiet { f["quiet"] = true }
+        try send(.object(f))
+    }
+
+    // MARK: the short code people read out
+
+    public struct PairingCode: Sendable { public let code: String; public let expiresAt: Int64 }
+
+    /// `requestPairingCode`: 6 characters pointing to THIS connection; they expire in minutes
+    /// and burn when used.
+    public func requestPairingCode(ttlMs: Int64? = nil) async throws -> PairingCode {
+        var f: [String: JSON] = ["type": "pair-code"]
+        if let ttlMs { f["ttlMs"] = .int(ttlMs) }
+        let res = try await request(f)
+        guard let code = res["code"]?.string else { throw ProxyError("pair-code: no code in the answer", code: "pair-code-failed") }
+        return PairingCode(code: code, expiresAt: res["expiresAt"]?.int ?? 0)
+    }
+
+    /// `redeemPairingCode`: the token behind someone's code. It does NOT say whose it is — ask
+    /// with `helloTo` and wait for `.peerIdentity`. Throws `pair-invalid` for a bad code.
+    public func redeemPairingCode(_ code: String) async throws -> String {
+        let res = try await request(["type": "pair-redeem", "code": .string(code)])
+        guard res["ok"]?.bool == true, let instance = res["instance"]?.string else {
+            throw ProxyError(res["error"]?.string ?? "that code is not valid", code: "pair-invalid")
+        }
+        return instance
     }
 }

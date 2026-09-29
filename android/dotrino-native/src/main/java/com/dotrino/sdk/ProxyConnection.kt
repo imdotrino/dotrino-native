@@ -38,12 +38,20 @@ class ProxyConnection(private val url: String) {
     }
 
     /** A directed message: who sent it (connection token and, if identified, key) and its payload. */
-    data class Incoming(val from: String?, val fromPubkey: String?, val payload: JsonObject)
+    data class Incoming(
+        val from: String?,
+        val fromPubkey: String?,
+        val payload: JsonObject,
+        /** It waited in the proxy's offline queue (and since when). */
+        val queued: Boolean = false,
+        val queuedAt: Long? = null,
+    )
 
     class ProxyError(message: String, val code: String) : Exception(message)
 
     private var ws: WebSocket? = null
     private val connected = CompletableDeferred<String>()
+    private val ended = CompletableDeferred<String>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonObject>>()
     private val nextId = AtomicInteger(1)
     private val listeners = CopyOnWriteArrayList<(Incoming) -> Unit>()
@@ -89,9 +97,13 @@ class ProxyConnection(private val url: String) {
 
     fun close() { ws?.close(1000, "bye"); die("closed by us") }
 
+    /** Suspends until this connection dies, and says why. */
+    suspend fun awaitClosed(): String = ended.await()
+
     private fun die(reason: String) {
         if (closed != null) return
         closed = reason
+        ended.complete(reason)
         val e = ProxyError(reason, "disconnected")
         connected.completeExceptionally(e)
         pending.values.forEach { it.completeExceptionally(e) }
@@ -124,7 +136,11 @@ class ProxyConnection(private val url: String) {
                     if (from != null) onHello(from, payload)
                     return
                 }
-                val inc = Incoming(from, o["from_publickey"]?.jsonPrimitive?.content, payload)
+                val inc = Incoming(
+                    from, o["from_publickey"]?.jsonPrimitive?.content, payload,
+                    queued = o["queued"]?.jsonPrimitive?.content == "true",
+                    queuedAt = o["queued_at"]?.jsonPrimitive?.content?.toLongOrNull(),
+                )
                 listeners.forEach { runCatching { it(inc) } }
             }
             "disconnected" -> {
@@ -298,11 +314,44 @@ class ProxyConnection(private val url: String) {
         })
     }
 
-    /** A directed message to a key. The payload travels as a JSON string, like the JS client sends it. */
-    fun sendByPubkey(to: String, payload: JsonObject) {
+    /**
+     * A directed message to a key. The payload travels as a JSON string, like the JS client
+     * sends it. [quiet]: it is queued the same, but the proxy does not ring their phone —
+     * for what can wait until they open the app (presence, an ack).
+     */
+    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false) {
         send(buildJsonObject {
             put("to_publickey", buildJsonArray { add(JsonPrimitive(to)) })
             put("message", payload.toString())
+            if (quiet) put("quiet", true)
         })
+    }
+
+    // ---------- the short code people read out ("give me your code") ----------
+
+    data class PairingCode(val code: String, val expiresAt: Long)
+
+    /**
+     * `requestPairingCode`: 6 characters that point to THIS connection, expire in minutes
+     * and burn when used. What a person reads out, types or scans — the token is too long.
+     */
+    suspend fun requestPairingCode(ttlMs: Long? = null): PairingCode {
+        val res = request(buildJsonObject { put("type", "pair-code"); if (ttlMs != null) put("ttlMs", ttlMs) })
+        val code = res["code"]?.jsonPrimitive?.content ?: throw ProxyError("pair-code: no code in the answer", "pair-code-failed")
+        return PairingCode(code, res["expiresAt"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L)
+    }
+
+    /**
+     * `redeemPairingCode`: the connection behind someone's code (its token), on whatever
+     * proxy. It does NOT say whose it is — ask with [helloTo] and wait for [Event.PeerIdentity].
+     * Throws `pair-invalid` when the code is not valid (typo, expired, used).
+     */
+    suspend fun redeemPairingCode(code: String): String {
+        val res = request(buildJsonObject { put("type", "pair-redeem"); put("code", code) })
+        val instance = res["instance"]?.jsonPrimitive?.content
+        if (res["ok"]?.jsonPrimitive?.content != "true" || instance == null) {
+            throw ProxyError(res["error"]?.jsonPrimitive?.content ?: "that code is not valid", "pair-invalid")
+        }
+        return instance
     }
 }

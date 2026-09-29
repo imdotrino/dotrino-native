@@ -6,16 +6,17 @@ import Foundation
 /// Todo lo que una bóveda firma o comprueba pasa por aquí: un byte distinto es una firma que
 /// nunca verifica, y desde fuera se ve como «la bóveda no contesta».
 ///
-/// Numbers: only integers. Everything this library signs (`ts`, `seq`, `iat`, `v`) is an
-/// integer, and reproducing JS float formatting is exactly the kind of «almost the same» that
-/// breaks a signature silently. A fraction throws instead.
+/// Numbers: integers, and DECIMALS only as JS writes them — plain notation, shortest form (a
+/// rating of 4.5 is `4.5`). Swift's `String(Double)` is also the shortest round-trip form, so in
+/// plain notation both agree; an exponent (`1e-07`) is where they would not, and that throws
+/// instead of producing «almost the same» text that breaks a signature silently.
 public enum Canonical {
     public struct FractionError: Error, CustomStringConvertible {
         public let description: String
     }
 
     public static func stringify(_ v: JSON) throws -> String {
-        if containsDouble(v) { throw FractionError(description: "canonical: non-integer numbers are not supported") }
+        if containsDouble(v) { throw FractionError(description: "canonical: a number that cannot be written as JS writes it") }
         var out = ""
         write(v, into: &out, allowDoubles: false)
         return out
@@ -23,11 +24,16 @@ public enum Canonical {
 
     private static func containsDouble(_ v: JSON) -> Bool {
         switch v {
-        case .double: return true
+        case .double(let d): return !isPlainDecimal(String(d))
         case .array(let a): return a.contains(where: containsDouble)
         case .object(let o): return o.values.contains(where: containsDouble)
         default: return false
         }
+    }
+
+    /// `4.5`, `-0.25`, `0.001`: what JS prints for a finite non-integer in its plain range.
+    static func isPlainDecimal(_ s: String) -> Bool {
+        s.range(of: #"^-?(0|[1-9][0-9]*)\.[0-9]*[1-9]$"#, options: .regularExpression) != nil
     }
 
     static func write(_ v: JSON, into out: inout String, allowDoubles: Bool) {

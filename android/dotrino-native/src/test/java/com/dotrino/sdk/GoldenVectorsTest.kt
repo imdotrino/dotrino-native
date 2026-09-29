@@ -62,8 +62,11 @@ class GoldenVectorsTest {
         }
     }
 
-    @Test fun canonicalRefusesFractions() = runBlocking<Unit> {
-        assertThrows(IllegalArgumentException::class.java) { Canonical.stringify(JsonObject(mapOf("a" to JsonPrimitive(1.5)))) }
+    /** Decimals as JS writes them (a rating of 4.5); what it would write differently is refused. */
+    @Test fun canonicalDecimalsOnlyAsJsWritesThem() = runBlocking<Unit> {
+        assertEquals("{\"a\":1.5}", Canonical.stringify(JsonObject(mapOf("a" to JsonPrimitive(1.5)))))
+        assertThrows(IllegalArgumentException::class.java) { Canonical.stringify(JsonObject(mapOf("a" to JsonPrimitive(1e-7)))) }
+        assertThrows(IllegalArgumentException::class.java) { Canonical.stringify(Json.parseToJsonElement("{\"a\":4.50}")) }
     }
 
     @Test fun aSignatureMadeByThePilarVerifiesHere() = runBlocking<Unit> {

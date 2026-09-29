@@ -27,10 +27,16 @@ public final class Profile: @unchecked Sendable {
     private let acta: JSON?
     private let renounces: [JSON]
     private let keys: DeviceKeys
+    /// The id of this profile in the identity's store (`dotrino.identity.current`); nil for a profile made in hand.
+    public let pid: String?
 
-    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys) {
-        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys
+    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil) {
+        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid
     }
+
+    /// `profileCard` of the identity: the SIGNED list of this person's devices, from the acta.
+    /// Others use it to seal to every device and not just this one. Nil without an acta.
+    public var card: JSON? { acta?["card"].flatMap { $0.object != nil ? $0 : nil } }
 
     public static let current = "dotrino.identity.current"
 
@@ -59,7 +65,7 @@ public final class Profile: @unchecked Sendable {
         else { throw ProfileError("the active profile has no keys in this phone's chip", code: "no-profile-keys") }
         let acta = items["kv:" + scoped(pid, "dotrino.identity.acta")].flatMap { try? JSON.parse($0) }
         let renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")].flatMap { try? JSON.parse($0) }?.array ?? []
-        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid))
+        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid)
     }
 
     /// For tests and headless tools: a profile from keys in hand.

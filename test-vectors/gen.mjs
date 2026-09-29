@@ -19,6 +19,7 @@ const canon = [
   { s: 'comillas " barra \\ salto\nretorno\rtab\tcontrol\u0001\u001f backspace\b formfeed\f' },
   { 'ñ': 'áéíóú ✓ 🔑', '': 'vacía', 'Z': [], 'a': {} },
   { op: 'identify', aud: 'wss://proxy.dotrino.com', publickey: '{"kty":"EC"}', token: 'AB12', ts: 1790000000000 },
+  { subject: 'S', rating: 4.5, notes: '', low: -0.25, tiny: 0.001, whole: 5 },
 ].map((input) => ({ input, canonical: canonicalStringify(input) }))
 
 // 2) Firma: una llave de aparato del pilar firma; la privada va en el vector para que la
@@ -54,6 +55,29 @@ const profilePlain = JSON.stringify({ __ccl: 1, g: 'padel', r: '_k', k: 'bcast.w
 const profileEnvelope = await sender.encrypt([{ encryptionPubkey: phoneEnc.encPublickey }], profilePlain)
 const senderEncPub = await sender.getEncryptionPubkey()
 
+// 5b) Mensaje SELLADO de una app (el messenger): `identitySealing` del pilar del transporte,
+//     `{ app, sealed, from }`. El teléfono lo abre con `IdentitySealing.open`.
+const { identitySealing } = await import(join(here, '../../dotrino-proxy-client/src/sealing.js'))
+const sealedMsg = { type: 'DM', text: 'hola ñandú ✓', ts: 1790000000000, mid: 'm-1' }
+const appSealed = await identitySealing(sender, { app: 'messenger' }).seal(sealedMsg, phoneEnc.encPublickey)
+
+// 5c) Libro de contactos: una TARJETA de perfil firmada por su master y una CALIFICACIÓN
+//     firmada por una identidad. El teléfono las verifica (PeerBook).
+const { makeProfileCard } = await import(join(id, 'acta.js'))
+const cardMaster = await makeDeviceKey()
+const cardDev = await makeDeviceKey(); const cardDevEnc = await makeDeviceEncKey()
+const cardActa = {
+  profileId: cardMaster.publickey, seq: 3, sealedBy: cardMaster.publickey, updatedAt: 1790000000000,
+  members: [
+    { pub: cardDev.publickey, encPub: cardDevEnc.encPublickey, caps: ['sign'] },
+    { pub: 'SVC', encPub: 'x', caps: ['read'], cn: 'svc' },
+  ],
+}
+const card = await makeProfileCard({ acta: cardActa, privateJwk: cardMaster.privateJwk })
+const ratedSubject = cardDev.publickey
+await sender.setRating(ratedSubject, 4.5, 'buen trato ñ')
+const endorsement = (await sender.getRatingsForSubject(ratedSubject)).mine
+
 // 6) Acta: qué puede un miembro (capacidades, renuncias del acta y propias, lo desconocido).
 const { memberCan } = await import(join(id, 'acta.js'))
 const actaA = {
@@ -82,6 +106,8 @@ const broadcast = [
 
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
+  appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
+  peers: { card, cardDevPub: cardDev.publickey, cardDevEncPub: cardDevEnc.encPublickey, endorsement, subject: ratedSubject },
   acta: { acta: actaA, cases: acta },
   broadcast,
   canon,
