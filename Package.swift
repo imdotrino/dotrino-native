@@ -19,7 +19,7 @@ let package = Package(
         .target(name: "DotrinoNativeUI", resources: [.process("Resources")]),
         .testTarget(
             name: "DotrinoNativeTests",
-            dependencies: ["DotrinoNative"],
+            dependencies: ["DotrinoNative", "DotrinoNativeUI"],
             // Los MISMOS vectores que prueba Android (`test-vectors/gen.mjs` los escribe aquí).
             resources: [.copy("Resources/vectors.json")]
         ),
