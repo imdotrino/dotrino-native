@@ -72,13 +72,33 @@ extension DotrinoTopbar where Actions == EmptyView {
     }
 }
 
-/// The ecosystem's dark palette in native (the same as `dotrino_colors.xml`).
+/// The palette of the ecosystem's native components. By default the dark one (the same as
+/// `dotrino_colors.xml`); an app with the home's look calls `DotrinoPalette.use(.coolAndCozy)`
+/// at launch — on Android the app overrides the `dotrino_*` colour resources instead.
 public enum DotrinoPalette {
-    public static let bg = Color(red: 0x0B / 255, green: 0x12 / 255, blue: 0x20 / 255)
-    public static let card = Color(red: 0x13 / 255, green: 0x1D / 255, blue: 0x31 / 255)
-    public static let fg = Color(red: 0xDB / 255, green: 0xE7 / 255, blue: 0xF7 / 255)
-    public static let muted = Color(red: 0x8A / 255, green: 0x9B / 255, blue: 0xB5 / 255)
-    public static let accent = Color(red: 0x4F / 255, green: 0x8C / 255, blue: 0xFF / 255)
+    public struct Colors: Sendable {
+        public let bg, card, fg, muted, accent: Color
+        public init(bg: Color, card: Color, fg: Color, muted: Color, accent: Color) {
+            self.bg = bg; self.card = card; self.fg = fg; self.muted = muted; self.accent = accent
+        }
+        private static func hex(_ v: UInt32) -> Color {
+            Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+        }
+        /// The dark palette of `dotrino-app`.
+        public static let dark = Colors(bg: hex(0x0B1220), card: hex(0x131D31), fg: hex(0xDBE7F7), muted: hex(0x8A9BB5), accent: hex(0x4F8CFF))
+        /// «Cool & Cozy», the home's (dotrino.com): light, blue #00658c.
+        public static let coolAndCozy = Colors(bg: hex(0xF4F7F9), card: hex(0xFFFFFF), fg: hex(0x181C1E), muted: hex(0x4A5560), accent: hex(0x00658C))
+    }
+
+    nonisolated(unsafe) private static var current = Colors.dark
+    /// Choose the palette once, at launch, before the first screen is drawn.
+    public static func use(_ c: Colors) { current = c }
+
+    public static var bg: Color { current.bg }
+    public static var card: Color { current.card }
+    public static var fg: Color { current.fg }
+    public static var muted: Color { current.muted }
+    public static var accent: Color { current.accent }
 }
 
 /// What the coin opens: the same texts and destinations as the `<dotrino-support>` modal.
