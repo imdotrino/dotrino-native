@@ -54,14 +54,6 @@ class IdentityClient(context: Context) {
          * button. Android apps go only through Play, so there is no other store to send to.
          */
         val installUri: Uri = com.dotrino.sdk.ui.DotrinoApps.storeUri(PACKAGE)
-
-        /** The action that opens the identity app's screen: it has no launcher icon (nothing to open by hand). */
-        const val OPEN_ACTION = "com.dotrino.identity.OPEN"
-
-        /** Opens the identity app's screen (its accounts and the Dotrino apps). Throws if it is not installed. */
-        fun open(context: Context) {
-            context.startActivity(android.content.Intent(OPEN_ACTION).setPackage(PACKAGE).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
     }
 
     class IdentityError(message: String, val code: String) : Exception(message)
