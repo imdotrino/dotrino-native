@@ -383,7 +383,10 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     // MARK: the short code people read out
 
-    public struct PairingCode: Sendable { public let code: String; public let expiresAt: Int64 }
+    public struct PairingCode: Sendable {
+        public let code: String; public let expiresAt: Int64
+        public init(code: String, expiresAt: Int64) { self.code = code; self.expiresAt = expiresAt }
+    }
 
     /// `requestPairingCode`: 6 characters pointing to THIS connection; they expire in minutes
     /// and burn when used.

@@ -23,6 +23,10 @@ public final class SealedSession: @unchecked Sendable {
         public let senderEncPub: String
         public let queued: Bool
         public let queuedAt: Int64?
+        public init(fromToken: String?, fromPubkey: String?, payload: JSON, senderEncPub: String, queued: Bool, queuedAt: Int64?) {
+            self.fromToken = fromToken; self.fromPubkey = fromPubkey; self.payload = payload
+            self.senderEncPub = senderEncPub; self.queued = queued; self.queuedAt = queuedAt
+        }
     }
 
     /// `connecting` | `online` | `offline` | `closed`.
