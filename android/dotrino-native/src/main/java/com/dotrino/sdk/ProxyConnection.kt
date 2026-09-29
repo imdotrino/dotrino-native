@@ -302,6 +302,19 @@ class ProxyConnection(private val url: String) {
         return encPub
     }
 
+    /**
+     * The same, signed by whoever this connection identified as (a PROFILE signs through its
+     * own policy): the proxy rings this phone when something is queued for that identity.
+     */
+    suspend fun registerPushTokenAs(publickey: String, fcmToken: String, sign: suspend (JsonObject) -> String) {
+        val sub = buildJsonObject { put("kind", "fcm"); put("token", fcmToken) }.toString()
+        val data = buildJsonObject {
+            put("op", "push-subscribe"); put("publickey", publickey); put("subscription", sub)
+            put("ts", System.currentTimeMillis())
+        }
+        request(buildJsonObject { put("type", "push-subscribe"); put("data", data); put("signature", sign(data)) })
+    }
+
     /** Registers this phone's FCM token under my key: the proxy rings it when something is queued for me. */
     suspend fun registerPushToken(keys: DeviceKeys, fcmToken: String) {
         val sub = buildJsonObject { put("kind", "fcm"); put("token", fcmToken) }.toString()

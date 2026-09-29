@@ -75,6 +75,23 @@ class SealedSession(
     var onWarn: (String, Throwable?) -> Unit = { _, _ -> }
 
     @Volatile private var direct: DirectTransport? = null
+    @Volatile private var pushToken: String? = null
+
+    /**
+     * This phone's push token (FCM). Registered under the profile after EVERY identify (tokens
+     * rotate, and a proxy change forgets them): the proxy rings the phone — a ring with no
+     * content — when a message is queued for this identity while the app is closed.
+     */
+    fun setPushToken(token: String) {
+        pushToken = token
+        conn?.let { c -> scope.launch { registerPush(c) } }
+    }
+
+    private suspend fun registerPush(c: ProxyConnection) {
+        val t = pushToken ?: return
+        try { c.registerPushTokenAs(profile.publickey, t) { profile.signData(it) } }
+        catch (e: Exception) { onWarn("could not register the push token", e) }
+    }
 
     /**
      * Plugs in the DIRECT ROAD (WebRTC, module `dotrino-webrtc`). From then on, what goes by
@@ -134,6 +151,7 @@ class SealedSession(
                     try { c.announceEncPub(profile.publickey, profile.encPub) { profile.signData(it) } }
                     catch (e: Exception) { onWarn("could not announce my encryption key", e) }
                     direct?.let { d -> scope.launch { enableTurn(c, d) } }
+                    scope.launch { registerPush(c) }
                     fails = 0
                     setStatus(Status("online", u))
                     onlineListeners.forEach { runCatching { it() } }

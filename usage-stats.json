@@ -1,6 +1,6 @@
 {
-  "startedAt": 1790684667760,
-  "lastFlushAt": 1790684843348,
+  "startedAt": 1790684926241,
+  "lastFlushAt": 1790685101814,
   "perIp": {
     "::ffff:127.0.0.1": {
       "messages": 124,
@@ -10,34 +10,34 @@
       "lastSeen": 1790683626952
     },
     "::ffff:192.168.100.217": {
-      "messages": 20819,
+      "messages": 20833,
       "hardLimits": 0,
       "softLimits": 0,
       "firstSeen": 1790634031839,
-      "lastSeen": 1790684843325
+      "lastSeen": 1790684945232
     },
     "::ffff:192.168.100.23": {
-      "messages": 20935,
+      "messages": 20966,
       "hardLimits": 0,
       "softLimits": 0,
       "firstSeen": 1790634032073,
-      "lastSeen": 1790684843327
+      "lastSeen": 1790684950283
     }
   },
   "perOp": {
-    "identify": 25,
+    "identify": 30,
     "encpub": 12,
-    "publish": 11,
+    "publish": 12,
     "watch": 8,
-    "message": 41790,
+    "message": 41827,
     "enc-lookup": 8,
     "unpublish": 2,
     "unwatch": 4,
-    "pair-code": 9,
-    "turn-credentials": 9
+    "pair-code": 10,
+    "turn-credentials": 10
   },
-  "totalConnections": 33,
-  "totalMessages": 41878,
+  "totalConnections": 39,
+  "totalMessages": 41923,
   "totalHardLimits": 0,
   "totalSoftLimits": 0,
   "retentionDays": 30
