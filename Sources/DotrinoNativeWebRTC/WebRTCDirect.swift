@@ -8,7 +8,7 @@ import WebRTC
 /// is «polite» (yields on an offer collision). Everything on ONE serial queue.
 public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable {
     private static let initialized: Void = { RTCInitializeSSL() }()
-    private let q = DispatchQueue(label: "dotrino-webrtc")
+    fileprivate let q = DispatchQueue(label: "dotrino-webrtc")
     private let factory: RTCPeerConnectionFactory
     private var iceServers: [IceServer] = IceServer.defaultStun
     private var selfToken: () -> String? = { nil }
@@ -22,7 +22,7 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     public var onWarn: (String) -> Void = { _ in }
     public var onOpen: (String) -> Void = { _ in }
 
-    private final class Peer: NSObject {
+    fileprivate final class Peer: NSObject {
         let remote: String
         var pc: RTCPeerConnection?
         var dc: RTCDataChannel?
