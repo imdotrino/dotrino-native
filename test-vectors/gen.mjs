@@ -78,6 +78,12 @@ const ratedSubject = cardDev.publickey
 await sender.setRating(ratedSubject, 4.5, 'buen trato ñ')
 const endorsement = (await sender.getRatingsForSubject(ratedSubject)).mine
 
+// 5d) Un PERFIL CON ACTA de verdad (génesis sellada por el pilar): lo que un registro exige
+//     para aceptar una firma (la cadena prueba que el aparato habla por la persona).
+const { genesisActa, sealActa } = await import(join(id, 'acta.js'))
+const repSign = await makeDeviceKey(); const repEnc = await makeDeviceEncKey()
+const repActa = await sealActa({ acta: genesisActa({ pub: repSign.publickey, encPub: repEnc.encPublickey, label: 'phone' }), privateJwk: repSign.privateJwk })
+
 // 6) Acta: qué puede un miembro (capacidades, renuncias del acta y propias, lo desconocido).
 const { memberCan } = await import(join(id, 'acta.js'))
 const actaA = {
@@ -108,6 +114,7 @@ writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), 
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
   peers: { card, cardDevPub: cardDev.publickey, cardDevEncPub: cardDevEnc.encPublickey, endorsement, subject: ratedSubject },
+  actaProfile: { signPrivateJwk: repSign.privateJwk, encPrivateJwk: repEnc.encPrivateJwk, acta: repActa },
   acta: { acta: actaA, cases: acta },
   broadcast,
   canon,

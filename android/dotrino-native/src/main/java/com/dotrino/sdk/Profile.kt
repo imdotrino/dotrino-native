@@ -33,6 +33,8 @@ class Profile private constructor(
     private val keys: DeviceKeys,
     /** The id of this profile in the identity's store (`dotrino.identity.current`); null for a profile made in hand. */
     val pid: String? = null,
+    /** The last sealed actas (`dotrino.identity.acta.history`): the links of the sealer chain. */
+    private val history: JsonArray = JsonArray(emptyList()),
 ) {
     class ProfileError(message: String, val code: String) : Exception(message)
 
@@ -62,7 +64,8 @@ class Profile private constructor(
             val encPub = enc.getValue("publicJwk").jsonObject.toString()
             val acta = items["kv:" + scoped(pid, "dotrino.identity.acta")]?.let { json.parseToJsonElement(it) as? JsonObject }
             val renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
-            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid)
+            val history = items["kv:" + scoped(pid, "dotrino.identity.acta.history")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
+            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid, history)
         }
 
         /** For tests and headless tools: a profile from keys in hand. */
@@ -78,6 +81,40 @@ class Profile private constructor(
      * profile of one device, with no acta.
      */
     val card: JsonObject? get() = acta?.get("card") as? JsonObject
+
+    /**
+     * WHO I AM to others: the `profileId` of the acta (the genesis key, which never changes) —
+     * so a rating from the phone and one from the PC are the same person — or, without an
+     * acta, my own key.
+     */
+    val profileId: String get() = (acta?.get("profileId") as? JsonPrimitive)?.content ?: publickey
+
+    /**
+     * `sealerChain` of the identity: the actas where the sealer changed, oldest first, with the
+     * current one at the end. What proves THIS device speaks for [profileId], without asking
+     * anybody. Empty without an acta.
+     */
+    fun sealerChain(): JsonArray {
+        val cur = acta ?: return JsonArray(emptyList())
+        fun seq(o: JsonObject?) = (o?.get("seq") as? JsonPrimitive)?.content?.toLongOrNull()
+        val bySeq = linkedMapOf<Long, JsonObject>()
+        (history.mapNotNull { it as? JsonObject } + cur).forEach { a -> seq(a)?.let { bySeq[it] = a } }
+        val links = bySeq.values.filter { (it["sealerChanged"] as? JsonPrimitive)?.content == "true" }.sortedBy { seq(it) }
+        return JsonArray(if (links.isNotEmpty() && seq(links.last()) == seq(cur)) links else links + cur)
+    }
+
+    /**
+     * The whole signing package of the identity's `signData`: `{ signature, publickey,
+     * profileId, chain }`. What a registry needs to check that this device signs for the
+     * person (`@dotrino/reputation` refuses a bare signature).
+     */
+    suspend fun signPackage(data: JsonObject): JsonObject {
+        val signature = signData(data)
+        return kotlinx.serialization.json.buildJsonObject {
+            put("signature", JsonPrimitive(signature)); put("publickey", JsonPrimitive(publickey))
+            put("profileId", JsonPrimitive(profileId)); put("chain", sealerChain())
+        }
+    }
 
     /** May this device sign for the profile? No acta = a profile of one device, which signs. */
     val canSign: Boolean get() = acta == null || Acta.memberCan(acta, publickey, "sign", renounces)

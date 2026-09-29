@@ -29,9 +29,33 @@ public final class Profile: @unchecked Sendable {
     private let keys: DeviceKeys
     /// The id of this profile in the identity's store (`dotrino.identity.current`); nil for a profile made in hand.
     public let pid: String?
+    /// The last sealed actas (`dotrino.identity.acta.history`): the links of the sealer chain.
+    private let history: [JSON]
 
-    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil) {
-        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid
+    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil, history: [JSON] = []) {
+        self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid; self.history = history
+    }
+
+    /// WHO I AM to others: the acta's `profileId` (a rating from the phone and one from the PC
+    /// are the same person) or, without an acta, my own key.
+    public var profileId: String { acta?["profileId"]?.string ?? publickey }
+
+    /// `sealerChain` of the identity: the actas where the sealer changed, oldest first, with the
+    /// current one at the end. What proves THIS device speaks for `profileId`.
+    public func sealerChain() -> [JSON] {
+        guard let cur = acta else { return [] }
+        var bySeq: [Int64: JSON] = [:]
+        for a in history + [cur] { if let s = a["seq"]?.int { bySeq[s] = a } }
+        let links = bySeq.values.filter { $0["sealerChanged"]?.bool == true }.sorted { ($0["seq"]?.int ?? 0) < ($1["seq"]?.int ?? 0) }
+        if let last = links.last, last["seq"]?.int == cur["seq"]?.int { return links }
+        return links + [cur]
+    }
+
+    /// The whole signing package of the identity's `signData`: `{ signature, publickey,
+    /// profileId, chain }` — what a registry needs to check this device signs for the person.
+    public func signPackage(_ data: JSON) throws -> JSON {
+        ["signature": .string(try signData(data)), "publickey": .string(publickey),
+         "profileId": .string(profileId), "chain": .array(sealerChain())]
     }
 
     /// `profileCard` of the identity: the SIGNED list of this person's devices, from the acta.
@@ -65,7 +89,8 @@ public final class Profile: @unchecked Sendable {
         else { throw ProfileError("the active profile has no keys in this phone's chip", code: "no-profile-keys") }
         let acta = items["kv:" + scoped(pid, "dotrino.identity.acta")].flatMap { try? JSON.parse($0) }
         let renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")].flatMap { try? JSON.parse($0) }?.array ?? []
-        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid)
+        let history = items["kv:" + scoped(pid, "dotrino.identity.acta.history")].flatMap { try? JSON.parse($0) }?.array ?? []
+        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid, history: history)
     }
 
     /// For tests and headless tools: a profile from keys in hand.
