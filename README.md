@@ -44,6 +44,21 @@ en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`). La p
 con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `ActaE2eTest`): con
 `sign` el perfil emite y el espectador lo verifica; tras quitarle `sign`, `needs-vault-signer`.
 
+**Hablar con otras personas** (lo que usa el messenger nativo, y cualquier app que mande algo
+del usuario por mensaje dirigido — CONVENCIONES §4.1):
+
+| Pieza | Qué es | Original en JS |
+|---|---|---|
+| `IdentitySealing` | el sobre `{ app, sealed, from }`: sellado con el sobre de la identidad a TODAS las llaves de la persona, y dice quién selló | `proxy-client` `identitySealing` |
+| `SealedSession` | una conexión que se mantiene (reconecta, re-identifica, re-anuncia la llave, cambia de proxio tras 3 fallos) y exige el sellado en las dos direcciones; código corto (`requestPairingCode`/`redeemPairingCode`) y `whoIs` | `WebSocketProxyClient` con `requireSealed` |
+| `PeerBook` | el libro de contactos del perfil (el MISMO registro que la identidad: `peers:peers.<pid>.v1`), tarjetas de perfil, calificaciones firmadas y avales verificados | `vault/peerStore.js` + `vault/core.js` |
+| `DirectTransport` | el camino directo (escalones 2 y 3): la interfaz; libwebrtc va aparte en **`dotrino-webrtc`** (Android) / **`DotrinoNativeWebRTC`** (iOS) porque pesa ~10 MB por arquitectura | `webrtc.js` |
+| `DotrinoQr` / `QrScanView` · `DotrinoQR` / `DotrinoQRScanner` | mostrar y leer QR, todo en el aparato (Android: ZXing core; iOS: CoreImage + AVFoundation) | `@dotrino/qr` |
+
+El camino directo se probó contra el pilar JS real (`test-vectors/e2e-direct.mjs` +
+`DirectE2eTest` en el emulador y `DirectE2eTests` en el simulador): el primer mensaje sale por
+el proxio, el canal se abre por debajo y el siguiente va por WebRTC, sellado igual.
+
 **Pantalla** (CONVENCIONES §16.2: los componentes del ecosistema existen UNA vez, aquí):
 Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `actions`,
 `DotrinoLocale`, `DotrinoApps`, `DotrinoSheet` —el modal del ecosistema— e `IdentityRequired`:
