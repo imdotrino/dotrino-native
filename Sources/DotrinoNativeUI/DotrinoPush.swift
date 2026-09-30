@@ -24,9 +24,31 @@ public enum DotrinoPush {
     /// después al delegate de la app. Sin permiso no se registra: no habría nada que enseñar.
     @MainActor
     public static func register() {
+        installRings()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             guard granted else { return }
             DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+        }
+    }
+
+    /// Cuántos trinos hay: el proxio elige uno al azar en cada aviso (`dotrino-ring-<n>.caf`).
+    /// Si cambia, cambia también `RINGS` en `dotrino-proxy/apns.js`.
+    public static let ringCount = 7
+
+    /// EL TONO: iOS solo suena un sonido propio si está en el paquete de la app o en su
+    /// `Library/Sounds`. Los trinos viven en esta librería, así que se copian ahí (una vez) y
+    /// ninguna app los tiene que traer. Si falta uno, iOS usa el sonido por defecto.
+    static func installRings(fm: FileManager = .default) {
+        guard let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+        let dir = lib.appendingPathComponent("Sounds", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        for n in 1...ringCount {
+            let name = "dotrino-ring-\(n)"
+            let dest = dir.appendingPathComponent(name + ".caf")
+            if fm.fileExists(atPath: dest.path) { continue }
+            guard let src = Bundle.module.url(forResource: name, withExtension: "caf")
+                ?? Bundle.module.url(forResource: name, withExtension: "caf", subdirectory: "Sounds") else { continue }
+            try? fm.copyItem(at: src, to: dest)
         }
     }
 

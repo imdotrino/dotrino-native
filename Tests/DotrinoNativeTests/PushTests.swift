@@ -18,4 +18,21 @@ final class PushTests: XCTestCase {
         XCTAssertEqual(t.token, "00ab10ff")
         XCTAssertEqual(t.env, "production")   // el bundle de los tests no lleva perfil
     }
+
+    func testTheRingsAreInstalledWhereIOSLooksForThem() throws {
+        DotrinoPush.installRings()
+        let lib = try XCTUnwrap(FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first)
+        for n in 1...DotrinoPush.ringCount {
+            let f = lib.appendingPathComponent("Sounds/dotrino-ring-\(n).caf")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), f.lastPathComponent)
+        }
+    }
+}
+
+final class RingTests: XCTestCase {
+    func testARandomRingNameIsOneOfTheShippedOnes() {
+        for _ in 0..<50 {
+            XCTAssertTrue(DotrinoRing.randomName().range(of: #"^dotrino-ring-[1-7]\.caf$"#, options: .regularExpression) != nil)
+        }
+    }
 }
