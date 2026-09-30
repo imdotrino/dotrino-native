@@ -27,4 +27,6 @@
     <string name="dotrino_profile_login">Iniciar sesión</string>
     <string name="dotrino_profile_logout">Salir</string>
     <string name="dotrino_profile_unnamed">Perfil sin nombre</string>
+    <string name="dotrino_profiles_loading">Cargando tus perfiles…</string>
+    <string name="dotrino_profiles_error">No se pudieron leer tus perfiles (%1$s).</string>
 </resources>

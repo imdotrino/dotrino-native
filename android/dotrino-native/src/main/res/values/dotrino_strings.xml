@@ -27,4 +27,6 @@
     <string name="dotrino_profile_login">Sign in</string>
     <string name="dotrino_profile_logout">Sign out</string>
     <string name="dotrino_profile_unnamed">Unnamed profile</string>
+    <string name="dotrino_profiles_loading">Loading your profiles…</string>
+    <string name="dotrino_profiles_error">Could not read your profiles (%1$s).</string>
 </resources>

@@ -175,8 +175,22 @@ class DotrinoTopbar(
         renderLinks(false)
         sheet.button(activity.getString(R.string.dotrino_support_close)) { sheet.dialog.dismiss() }
         sheet.show()
+        // While they are read (the identity's store can be large and travel in pieces), it says so.
+        val loading = TextView(activity).apply {
+            text = activity.getString(R.string.dotrino_profiles_loading); setTextColor(color(R.color.dotrino_muted))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setPadding(px(4), px(8), px(4), px(8)); tag = "profiles-loading"
+        }
+        list.addView(loading)
         scope.launch {
-            val entries = runCatching { withContext(Dispatchers.IO) { PhoneProfiles.load(IdentityClient.shared(activity)) } }.getOrNull() ?: return@launch
+            val entries = try { withContext(Dispatchers.IO) { PhoneProfiles.load(IdentityClient.shared(activity)) } }
+            catch (e: Exception) {
+                // Said, not swallowed: without the list the menu would look like there were no profiles.
+                android.util.Log.w("dotrino-topbar", "could not read the profiles", e)
+                val code = (e as? IdentityClient.IdentityError)?.code ?: e.javaClass.simpleName
+                loading.text = activity.getString(R.string.dotrino_profiles_error, code); loading.setTextColor(color(R.color.dotrino_fg))
+                return@launch
+            }
+            list.removeView(loading)
             renderLinks(entries.any { it.current && it.login != null })
             for (e in entries) list.addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
