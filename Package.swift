@@ -23,7 +23,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "DotrinoNative"),
-        .target(name: "DotrinoNativeUI", resources: [.process("Resources")]),
+        .target(name: "DotrinoNativeUI", dependencies: ["DotrinoNative"], resources: [.process("Resources")]),
         .target(name: "DotrinoNativeWebRTC", dependencies: ["DotrinoNative", .product(name: "WebRTC", package: "WebRTC")]),
         .testTarget(
             name: "DotrinoNativeTests",
