@@ -9,7 +9,7 @@ class IdentitySplitTest {
     @Test fun aLargeAnswerGoesInPiecesThatJoinBack() {
         val big = "{\"items\":{\"kv:foto\":\"" + "ñ".repeat(IdentityWire.PART * 3 + 17) + "\"}}"
         val parts = IdentityWire.split(big)
-        assertEquals(4, parts.size)
+        assertEquals((big.length + IdentityWire.PART - 1) / IdentityWire.PART, parts.size)
         assertTrue(parts.all { it.length <= IdentityWire.PART })
         assertEquals(big, parts.joinToString(""))
         assertEquals(listOf("{}"), IdentityWire.split("{}"))   // lo pequeño va entero

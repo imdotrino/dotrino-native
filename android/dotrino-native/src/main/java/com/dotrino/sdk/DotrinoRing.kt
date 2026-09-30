@@ -33,6 +33,9 @@ object DotrinoRing {
     // media reproducción («finalized without being released») y el trino se corta.
     private val playing = java.util.Collections.synchronizedSet(HashSet<MediaPlayer>())
 
+    /** How loud the trino plays, over the notification volume the person set (0…1). */
+    const val VOLUME = 0.45f
+
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -63,6 +66,9 @@ object DotrinoRing {
         if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
         val mp = MediaPlayer.create(ctx, SOUNDS.random(), attrs, am.generateAudioSessionId()) ?: return
+        // Softer than the stream's full level (dueño, 2026-09-30: «muy fuerte en Android»): on
+        // Android the notification stream plays it at the phone's level, where iOS is gentler.
+        mp.setVolume(VOLUME, VOLUME)
         playing.add(mp)
         mp.setOnCompletionListener { playing.remove(it); it.release() }
         mp.setOnErrorListener { p, _, _ -> playing.remove(p); p.release(); true }

@@ -14,6 +14,7 @@ import android.os.Messenger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -55,6 +56,12 @@ class IdentityClient(context: Context) {
          */
         const val PART = IdentityWire.PART
         const val KEY_RID = "rid"; const val KEY_PART = "part"; const val KEY_PARTS = "parts"
+        /**
+         * «Send me the next piece». The pieces of an answer are PULLED one at a time: sent all at
+         * once they filled Binder's buffer for one-way messages (~512 KB per process), one was
+         * lost, and the call ended in `identity-no-reply` — sometimes yes, sometimes no.
+         */
+        const val MSG_NEXT = 2
         fun split(text: String): List<String> = IdentityWire.split(text)
         fun partBundle(rid: String, part: Int, parts: Int, text: String) = Bundle().apply {
             putString(KEY, text)
@@ -94,16 +101,39 @@ class IdentityClient(context: Context) {
             partial.remove(rid); return got.joinToString("")
         }
         fun drop(rid: String) { partial.remove(rid) }
+        /** The next piece to ask for of [rid], or null when it is complete (or unknown). */
+        fun next(rid: String): Int? = partial[rid]?.indexOfFirst { it == null }?.takeIf { it >= 0 }
     }
 
     private val app = context.applicationContext
     private val thread = HandlerThread("dotrino-identity-client").apply { start() }
     private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonObject>>()
     private val nextId = AtomicInteger(1)
+    private val tag = java.util.UUID.randomUUID().toString().take(8)
     // Answers that come split (only touched on [thread]).
     private val joiner = Joiner()
-    private val replies = Messenger(Handler(thread.looper) { msg ->
-        val whole = joiner.feed(msg.data)
+    // Long requests waiting for the identity app to pull their next piece (by request id).
+    private val outgoing = ConcurrentHashMap<String, List<String>>()
+    private val replies: Messenger = Messenger(Handler(thread.looper) { msg ->
+        val data = msg.data
+        if (msg.what == MSG_NEXT) {
+            // The identity app asks for the next piece of a long request.
+            val rid = data?.getString(KEY_RID) ?: return@Handler true
+            val part = data.getInt(KEY_PART)
+            val parts = outgoing[rid] ?: return@Handler true
+            if (part in parts.indices) runCatching { service?.send(Message.obtain(null, MSG_CALL).apply { this.data = partBundle(rid, part, parts.size, parts[part]); replyTo = replies }) }
+            if (part == parts.lastIndex) outgoing.remove(rid)
+            return@Handler true
+        }
+        val whole = joiner.feed(data)
+        // A piece of a longer answer: ask for the next one (one in flight at a time).
+        if (whole == null) data?.getString(KEY_RID)?.let { rid ->
+            joiner.next(rid)?.let { part ->
+                runCatching { service?.send(Message.obtain(null, MSG_NEXT).apply {
+                    this.data = Bundle().apply { putString(KEY_RID, rid); putInt(KEY_PART, part) }; replyTo = replies
+                }) }
+            }
+        }
         val o = whole?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
         val id = o?.get("id")?.jsonPrimitive?.content
         if (o != null && id != null) pending.remove(id)?.complete(o)
@@ -152,20 +182,28 @@ class IdentityClient(context: Context) {
     }
 
     /** The whole answer `{ id, result }` / `{ id, error, code }`, as the WebView bridge forwards it. */
-    suspend fun raw(method: String, params: JsonObject, timeoutMs: Long = 20_000): JsonObject {
+    suspend fun raw(method: String, params: JsonObject, timeoutMs: Long = 20_000): JsonObject = calls.withLock { rawOne(method, params, timeoutMs) }
+
+    // ONE CALL AT A TIME per client: each call in flight has a piece in Binder's buffer, and
+    // twenty storeLoads at once of a big store filled it again even pulling the pieces.
+    private val calls = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun rawOne(method: String, params: JsonObject, timeoutMs: Long): JsonObject {
         val m = messenger()
-        val id = "c" + nextId.getAndIncrement()
+        // Unique across every client of the phone: the identity keeps a long answer's pieces by this id.
+        val id = "c$tag-" + nextId.getAndIncrement()
         val d = CompletableDeferred<JsonObject>()
         pending[id] = d
         try {
             val req = JsonObject(mapOf("id" to JsonPrimitive(id), "method" to JsonPrimitive(method), "params" to params))
-            // A large request (a photo in `storeSet`) goes in pieces too.
+            // A large request (a photo in `storeSet`) goes in pieces too, PULLED one at a time.
             val parts = split(req.toString())
-            parts.forEachIndexed { i, part -> m.send(Message.obtain(null, MSG_CALL).apply { data = partBundle(id, i, parts.size, part); replyTo = replies }) }
+            if (parts.size > 1) outgoing[id] = parts
+            m.send(Message.obtain(null, MSG_CALL).apply { data = partBundle(id, 0, parts.size, parts[0]); replyTo = replies })
             return withTimeout(timeoutMs) { d.await() }
         } catch (e: TimeoutCancellationException) {
             throw IdentityError("the identity app did not answer $method", "identity-no-reply")
-        } finally { pending.remove(id); Handler(thread.looper).post { joiner.drop(id) } }
+        } finally { pending.remove(id); outgoing.remove(id); Handler(thread.looper).post { joiner.drop(id) } }
     }
 
     /** The `result`, or the error the identity app gave, with its code. */
@@ -184,6 +222,6 @@ class IdentityClient(context: Context) {
 
 /** The split, without Android: so it is tested on the JVM. */
 object IdentityWire {
-    const val PART = 100_000
+    const val PART = 32_000
     fun split(text: String): List<String> = if (text.length <= PART) listOf(text) else text.chunked(PART)
 }

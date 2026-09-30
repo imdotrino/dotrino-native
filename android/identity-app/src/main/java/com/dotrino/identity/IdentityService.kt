@@ -36,14 +36,40 @@ class IdentityService : Service() {
     private val json = Json { ignoreUnknownKeys = true }
     private lateinit var host: IdentityHost
     private val joiner = IdentityClient.Joiner()   // only touched on [thread]
+    // Long answers waiting for the caller to pull their next piece (by request id). A caller
+    // that goes away leaves its entry; it is dropped after a minute.
+    private val outgoing = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    private val outgoingAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private val messenger by lazy {
         Messenger(Handler(thread.looper) { msg ->
+            if (msg.what == IdentityClient.MSG_NEXT) {
+                // The caller asks for the next piece of a long answer: one at a time.
+                val rid = msg.data?.getString(IdentityClient.KEY_RID) ?: return@Handler true
+                val part = msg.data.getInt(IdentityClient.KEY_PART)
+                val to = msg.replyTo ?: return@Handler true
+                val parts = outgoing[rid] ?: return@Handler true
+                if (part !in parts.indices) return@Handler true
+                runCatching { to.send(Message.obtain(null, IdentityClient.MSG_CALL).apply { data = IdentityClient.partBundle(rid, part, parts.size, parts[part]) }) }
+                    .onFailure { Log.w(TAG, "could not send piece $part: ${it.message}") }
+                if (part == parts.lastIndex) outgoing.remove(rid)
+                return@Handler true
+            }
             if (msg.what != IdentityClient.MSG_CALL) return@Handler false
             // The Message is recycled when this returns: keep what is needed now.
             val replyTo = msg.replyTo ?: return@Handler true
-            // A large request arrives in pieces: it is answered when the last one is in.
-            val text = joiner.feed(msg.data) ?: return@Handler true
+            // A large request arrives in pieces, pulled one at a time: it is answered when the last is in.
+            val text = joiner.feed(msg.data)
+            if (text == null) {
+                msg.data?.getString(IdentityClient.KEY_RID)?.let { rid ->
+                    joiner.next(rid)?.let { part ->
+                        runCatching { replyTo.send(Message.obtain(null, IdentityClient.MSG_NEXT).apply {
+                            data = android.os.Bundle().apply { putString(IdentityClient.KEY_RID, rid); putInt(IdentityClient.KEY_PART, part) }
+                        }) }
+                    }
+                }
+                return@Handler true
+            }
             scope.launch { answer(text, replyTo) }
             true
         })
@@ -69,11 +95,14 @@ class IdentityService : Service() {
         // IN PIECES: Android cannot pass more than ~1 MB between apps in one go (the identity's
         // store with a profile photo and a few profiles passed it: FAILED BINDER TRANSACTION, and
         // the pages were left without a profile). `IdentityClient` puts the pieces back together.
+        // Only the FIRST piece goes now; the caller pulls the rest one at a time (MSG_NEXT), so
+        // there is never more than one in flight.
         val parts = IdentityClient.split(out.toString())
+        val now = System.currentTimeMillis()
+        outgoingAt.entries.removeIf { now - it.value > 60_000 }.also { outgoing.keys.retainAll(outgoingAt.keys) }
+        if (parts.size > 1) { outgoing[id] = parts; outgoingAt[id] = now }
         runCatching {
-            parts.forEachIndexed { i, part ->
-                replyTo.send(Message.obtain(null, IdentityClient.MSG_CALL).apply { data = IdentityClient.partBundle(id, i, parts.size, part) })
-            }
+            replyTo.send(Message.obtain(null, IdentityClient.MSG_CALL).apply { data = IdentityClient.partBundle(id, 0, parts.size, parts[0]) })
         }.onFailure { Log.w(TAG, "could not answer $method: ${it.message}") }
     }
 
