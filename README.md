@@ -73,6 +73,24 @@ Android en `com.dotrino.sdk.ui` (vistas nativas: `DotrinoTopbar` con `brand` y `
 si falta la app de identidad, primero un modal que lo explica y después Play); iOS en el producto aparte **`DotrinoNativeUI`** (SwiftUI:
 `DotrinoTopbar`, `DotrinoLang`), para que el núcleo no dependa de SwiftUI.
 
+**Avisos y cómo se ven** (2026-09-30):
+
+| Pieza | Qué es | Original en JS |
+|---|---|---|
+| `DotrinoPush` (iOS, `DotrinoNativeUI`) | pide permiso, registra el teléfono en APNs y da el `PushToken` (entorno sandbox/producción leído del perfil de firma); `SealedSession.setPushToken` lo sube al proxio tras cada `identify`. El proxio (≥ 1.3.0) timbra por **APNs directo**, sin Firebase, con `loc-key` (`DOTRINO_RING_TITLE`/`BODY` en el `Localizable.strings` de la app) | `push-subscribe` de `proxy-client` |
+| `DotrinoRing` | **el trino**: siete sonidos, uno al azar. iOS: `DotrinoPush` los copia a `Library/Sounds` y el proxio elige el nombre; con la app abierta lo toca `DotrinoRing.play()`. Android: canales MUDOS (`DotrinoRing.channel`) y `play()` al avisar, respetando silencio y «No molestar». Los archivos salen de `sound/trinos/` de la raíz del ecosistema **solo cambiando el formato** | — |
+| `DotrinoAvatar` + `DotrinoAvatarView` | el avatar del perfil: la foto (`me.avatar`) o el identicon de `@dotrino/identity/avatar`, el MISMO (vectores de la web en `AvatarTest`/`AvatarTests`). `Profile.name`/`avatar`/`avatarSeed` salen del almacén de la identidad; `Profile.topbar` lo da a la barra | `vault/avatar.js` |
+| `DotrinoTopbar(showProfile:)` | `false` para una pantalla de TODOS los perfiles (Pedidos de la app Dotrino) | — |
+
+**Un token muerto no se traga el mensaje:** `sendSealed(toToken:…, peerPubkey:)` escucha el
+`message_sent.failed` del proxio y, si el token ya no existe, manda el MISMO sobre por pubkey
+(`sendToOrElse`), como `proxy-client` 0.26.
+
+**Android, entre apps en trozos:** Identidad ↔ Dotrino/Messenger pasan por Binder, que no
+admite más de ~512 KB por mensaje (y un String viaja en UTF-16). Petición y respuesta se parten en
+trozos de 100 000 caracteres (`IdentityClient.split` + `Joiner`, Identidad ≥ 0.2.4): el almacén
+de la identidad con fotos de perfil pasaba de ese tope y las páginas se quedaban sin perfiles.
+
 **No hace el emparejamiento.** El alta la hace el pilar JS de siempre (la consola, con
 `enrollDevice` y un firmador externo), firmando con la llave del chip.
 
