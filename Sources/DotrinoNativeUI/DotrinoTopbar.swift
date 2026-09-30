@@ -1,3 +1,4 @@
+import DotrinoNative
 import SwiftUI
 
 /// The Dotrino bar for NATIVE screens: what `<dotrino-topbar>` is on the web (brand, the app's
