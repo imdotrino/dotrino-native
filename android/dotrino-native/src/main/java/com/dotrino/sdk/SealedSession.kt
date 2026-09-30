@@ -32,7 +32,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class SealedSession(
     private val urls: List<String>,
     private val profile: Profile,
-    app: String,
+    private val app: String,
 ) {
     companion object {
         const val FAILS_BEFORE_FAILOVER = 3
@@ -134,7 +134,7 @@ class SealedSession(
             while (isActive && !closed) {
                 val u = url
                 setStatus(Status("connecting", u))
-                val c = ProxyConnection(u)
+                val c = ProxyConnection(u, app)   // this app, for rings and the queue
                 try {
                     c.connect()
                     c.onMessage { inc -> scope.launch { deliver(c, inc) } }
@@ -234,7 +234,7 @@ class SealedSession(
         val d = direct
         if (d != null && d.send(token, sealed.toString())) return
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
-        if (pk != null) c.sendToOrElse(token, sealed) { c.sendByPubkey(pk, sealed) }
+        if (pk != null) c.sendToOrElse(token, sealed) { c.sendByPubkey(pk, sealed, toApp = app) }
         else c.sendTo(listOf(token), sealed)
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
@@ -256,7 +256,8 @@ class SealedSession(
     suspend fun sendSealed(pubkey: String, payload: JsonObject, recipientEncPubs: List<String> = emptyList(), quiet: Boolean = false) {
         val c = live()
         val keys = recipientEncPubs.ifEmpty { listOf(c.encPubOf(pubkey)) }
-        c.sendByPubkey(pubkey, sealing.seal(payload, keys), quiet)
+        // To the SAME app on their side (messenger → messenger): their other apps share the key.
+        c.sendByPubkey(pubkey, sealing.seal(payload, keys), quiet, toApp = app)
     }
 
     suspend fun requestPairingCode(ttlMs: Long? = null) = live().requestPairingCode(ttlMs)

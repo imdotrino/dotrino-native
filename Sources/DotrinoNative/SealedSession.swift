@@ -39,6 +39,7 @@ public final class SealedSession: @unchecked Sendable {
     public let sealing: IdentitySealing
     private let urls: [String]
     private let profile: Profile
+    private let app: String
     private let lock = NSLock()
     private var conn: ProxyConnection?
     private var closed = false
@@ -95,6 +96,7 @@ public final class SealedSession: @unchecked Sendable {
         precondition(!urls.isEmpty, "at least one proxy url")
         self.urls = urls; self.profile = profile
         sealing = IdentitySealing(profile: profile, app: app)
+        self.app = app
         status = Status(state: "connecting", url: urls[0], reason: nil)
     }
 
@@ -131,7 +133,7 @@ public final class SealedSession: @unchecked Sendable {
             let u = url
             setStatus(Status(state: "connecting", url: u, reason: nil))
             do {
-                let c = try ProxyConnection(u)
+                let c = try ProxyConnection(u, app: app)   // this app, for rings and the queue
                 do {
                     try await c.connect()
                     _ = c.onMessage { [weak self, weak c] inc in
@@ -243,7 +245,7 @@ public final class SealedSession: @unchecked Sendable {
         let d = lock.withLock { direct }
         if let d, d.send(token, sealed.text) { return }
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
-        if let pk { try c.sendToOrElse(token, sealed) { try? c.sendByPubkey(pk, sealed) } }
+        if let pk { try c.sendToOrElse(token, sealed) { try? c.sendByPubkey(pk, sealed, toApp: self.app) } }
         else { try c.sendTo([token], sealed) }
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
@@ -253,7 +255,7 @@ public final class SealedSession: @unchecked Sendable {
     public func sendSealed(toPubkey pubkey: String, _ payload: JSON, recipientEncPubs: [String] = [], quiet: Bool = false) async throws {
         let c = try live()
         let keys = recipientEncPubs.isEmpty ? [try await c.encPubOf(pubkey)] : recipientEncPubs
-        try c.sendByPubkey(pubkey, try sealing.seal(payload, to: keys), quiet: quiet)
+        try c.sendByPubkey(pubkey, try sealing.seal(payload, to: keys), quiet: quiet, toApp: app)   // to the SAME app on their side
     }
 
     public func requestPairingCode(ttlMs: Int64? = nil) async throws -> ProxyConnection.PairingCode {

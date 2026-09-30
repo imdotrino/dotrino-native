@@ -28,7 +28,16 @@ import java.util.concurrent.atomic.AtomicInteger
  * screen is open) decides what a dropped connection means. A dead socket fails every
  * pending request with its reason instead of leaving it to time out.
  */
-class ProxyConnection(private val url: String) {
+/**
+ * [app]: WHICH app this connection is (`vault`, `messenger`…; websocket-proxy ≥ 1.4.0). On a
+ * phone every Dotrino app speaks with the same key (the phone's profile), so the proxy needs
+ * to know which one to ring and whose queued messages to hand over: without it, the last app
+ * to subscribe got every ring and the first to connect drained everyone's queue. Routing, not
+ * content. `null`: as before, everything.
+ */
+class ProxyConnection(private val url: String, val app: String? = null) {
+    init { require(app == null || Regex("^[a-z0-9][a-z0-9-]{0,31}$").matches(app)) { "app: \"$app\" is not a valid app name" } }
+
     companion object {
         const val HELLO_TAG = "__cc_hello__"
         private val http: OkHttpClient by lazy {
@@ -203,7 +212,10 @@ class ProxyConnection(private val url: String) {
             put("op", "identify"); put("aud", audience); put("publickey", publickey)
             put("token", t); put("ts", System.currentTimeMillis())
         }
-        request(buildJsonObject { put("type", "identify"); put("data", data); put("signature", sign(data)) })
+        request(buildJsonObject {
+            put("type", "identify"); put("data", data); put("signature", sign(data))
+            if (app != null) put("app", app)
+        })
         myPublickey = publickey
     }
 
@@ -345,6 +357,7 @@ class ProxyConnection(private val url: String) {
         val data = buildJsonObject {
             put("op", "push-subscribe"); put("publickey", publickey); put("subscription", sub)
             put("ts", System.currentTimeMillis())
+            if (app != null) put("app", app)   // inside what is signed: which app gets the ring
         }
         request(buildJsonObject { put("type", "push-subscribe"); put("data", data); put("signature", sign(data)) })
     }
@@ -355,6 +368,7 @@ class ProxyConnection(private val url: String) {
         val data = buildJsonObject {
             put("op", "push-subscribe"); put("publickey", keys.publickey); put("subscription", sub)
             put("ts", System.currentTimeMillis())
+            if (app != null) put("app", app)
         }
         request(buildJsonObject {
             put("type", "push-subscribe"); put("data", data); put("signature", keys.sign(Canonical.stringify(data)))
@@ -366,11 +380,13 @@ class ProxyConnection(private val url: String) {
      * sends it. [quiet]: it is queued the same, but the proxy does not ring their phone —
      * for what can wait until they open the app (presence, an ack).
      */
-    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false) {
+    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null) {
         send(buildJsonObject {
             put("to_publickey", buildJsonArray { add(JsonPrimitive(to)) })
             put("message", payload.toString())
             if (quiet) put("quiet", true)
+            // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
+            if (toApp != null) put("app", toApp)
         })
     }
 

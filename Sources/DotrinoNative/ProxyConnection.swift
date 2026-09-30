@@ -102,8 +102,17 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// The audience that goes inside `identify`: the proxy URL without trailing slashes.
     public let audience: String
 
-    public init(_ urlString: String) throws {
+    /// WHICH app this connection is (`vault`, `messenger`…; websocket-proxy ≥ 1.4.0). Every
+    /// Dotrino app on a phone speaks with the same key, so the proxy needs to know which one to
+    /// ring and whose queued messages to hand over. Routing, not content. `nil`: everything.
+    public let app: String?
+
+    public init(_ urlString: String, app: String? = nil) throws {
         guard let u = URL(string: urlString) else { throw ProxyError("invalid proxy url", code: "bad-url") }
+        if let app, app.range(of: "^[a-z0-9][a-z0-9-]{0,31}$", options: .regularExpression) == nil {
+            throw ProxyError("app: \"\(app)\" is not a valid app name", code: "bad-app")
+        }
+        self.app = app
         url = u
         var a = urlString
         while a.hasSuffix("/") { a.removeLast() }
@@ -283,7 +292,9 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         guard let t = token else { throw ProxyError("identify before connecting", code: "disconnected") }
         let data: JSON = ["op": "identify", "aud": .string(audience), "publickey": .string(publickey),
                           "token": .string(t), "ts": .int(nowMs())]
-        try await request(["type": "identify", "data": data, "signature": .string(try sign(data))])
+        var msg: [String: JSON] = ["type": "identify", "data": data, "signature": .string(try sign(data))]
+        if let app { msg["app"] = .string(app) }
+        try await request(msg)
         lock.withLock { myPublickey = publickey }
     }
 
@@ -387,9 +398,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     /// A directed message to a key. The payload travels as a JSON string, like the JS client
     /// sends it. [quiet]: queued the same, but the proxy does not ring their phone.
-    public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false) throws {
+    public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false, toApp: String? = nil) throws {
         var f: [String: JSON] = ["to_publickey": [.string(to)], "message": .string(payload.text)]
         if quiet { f["quiet"] = true }
+        // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
+        if let toApp { f["app"] = .string(toApp) }
         try send(.object(f))
     }
 
@@ -404,7 +417,9 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// (TestFlight, App Store). The same as `registerPushTokenAs` in Android, with APNs.
     public func registerApnsTokenAs(_ publickey: String, token: String, topic: String, env: String, sign: (JSON) throws -> String) async throws {
         let sub: JSON = ["kind": "apns", "token": .string(token), "topic": .string(topic), "env": .string(env)]
-        let data: JSON = ["op": "push-subscribe", "publickey": .string(publickey), "subscription": .string(try Canonical.stringify(sub)), "ts": .int(nowMs())]
+        var d: [String: JSON] = ["op": "push-subscribe", "publickey": .string(publickey), "subscription": .string(try Canonical.stringify(sub)), "ts": .int(nowMs())]
+        if let app { d["app"] = .string(app) }   // inside what is signed: which app gets the ring
+        let data = JSON.object(d)
         try await request(["type": "push-subscribe", "data": data, "signature": .string(try sign(data))])
     }
 
