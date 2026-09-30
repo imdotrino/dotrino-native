@@ -90,7 +90,8 @@ final class PeerBookBackupTests: XCTestCase {
         let (a, sa) = book(); let (b, sb) = book()
         _ = try a.addContact("X", nickname: "Ana")
         _ = try await sa.reconcile(v.call)
-        XCTAssertEqual(try await sb.reconcile(v.call), 1)
+        let got = try await sb.reconcile(v.call)
+        XCTAssertEqual(got, 1)
         XCTAssertEqual(try b.contacts().first?["nickname"]?.string, "Ana")
 
         try await Task.sleep(nanoseconds: 5_000_000)
@@ -99,8 +100,8 @@ final class PeerBookBackupTests: XCTestCase {
         _ = try await sa.reconcile(v.call)
         XCTAssertTrue(try a.contacts().isEmpty, "the removed contact does not come back")
 
-        XCTAssertEqual(try await sa.reconcile(v.call), 0)
-        XCTAssertEqual(try await sb.reconcile(v.call), 0)
+        let again1 = try await sa.reconcile(v.call), again2 = try await sb.reconcile(v.call)
+        XCTAssertEqual(again1, 0); XCTAssertEqual(again2, 0)
     }
 
     func testTheEntryIdIsTheWebOne() {
