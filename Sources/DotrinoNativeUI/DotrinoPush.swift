@@ -36,7 +36,7 @@ public enum DotrinoPush {
     public static let ringCount = 7
 
     /// EL TONO: iOS solo suena un sonido propio si está en el paquete de la app o en su
-    /// `Library/Sounds`. Los trinos viven en esta librería, así que se copian ahí (una vez) y
+    /// `Library/Sounds`. Los trinos viven en esta librería, así que se copian ahí (y otra vez si cambian) y
     /// ninguna app los tiene que traer. Si falta uno, iOS usa el sonido por defecto.
     static func installRings(fm: FileManager = .default) {
         guard let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
@@ -45,10 +45,13 @@ public enum DotrinoPush {
         for n in 1...ringCount {
             let name = "dotrino-ring-\(n)"
             let dest = dir.appendingPathComponent(name + ".caf")
-            if fm.fileExists(atPath: dest.path) { continue }
             guard let src = Bundle.module.url(forResource: name, withExtension: "caf")
-                ?? Bundle.module.url(forResource: name, withExtension: "caf", subdirectory: "Sounds") else { continue }
-            try? fm.copyItem(at: src, to: dest)
+                ?? Bundle.module.url(forResource: name, withExtension: "caf", subdirectory: "Sounds"),
+                  let data = try? Data(contentsOf: src) else { continue }
+            // Se copia de nuevo cuando la librería trae otro sonido con el mismo nombre (son
+            // unos 40 KB: comparar es barato, y así un trino nuevo llega con la actualización).
+            if (try? Data(contentsOf: dest)) == data { continue }
+            try? data.write(to: dest, options: .atomic)
         }
     }
 
