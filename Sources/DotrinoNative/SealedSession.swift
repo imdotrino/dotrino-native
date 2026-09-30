@@ -229,11 +229,12 @@ public final class SealedSession: @unchecked Sendable {
 
     /// Sealed, BY TOKEN (live, and the road that can go direct). Empty keys = the one their
     /// identity announced, found through the greeting of that token.
-    public func sendSealed(toToken token: String, _ payload: JSON, recipientEncPubs: [String] = []) async throws {
+    public func sendSealed(toToken token: String, _ payload: JSON, recipientEncPubs: [String] = [], peerPubkey: String? = nil) async throws {
         let c = try live()
+        let pk = peerPubkey ?? c.pubkeyOfToken(token)
         var keys = recipientEncPubs
         if keys.isEmpty {
-            guard let pk = c.pubkeyOfToken(token) else {
+            guard let pk else {
                 throw SessionError(description: "nobody has said whose this token is — greet it first", code: "no-peer-identity")
             }
             keys = [try await c.encPubOf(pk)]
@@ -241,7 +242,9 @@ public final class SealedSession: @unchecked Sendable {
         let sealed = try sealing.seal(payload, to: keys)
         let d = lock.withLock { direct }
         if let d, d.send(token, sealed.text) { return }
-        try c.sendTo([token], sealed)
+        // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
+        if let pk { try c.sendToOrElse(token, sealed) { try? c.sendByPubkey(pk, sealed) } }
+        else { try c.sendTo([token], sealed) }
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
     }

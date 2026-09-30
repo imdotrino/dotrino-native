@@ -62,6 +62,8 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     private let ended = OneShot<String>()
     private var pending: [String: OneShot<JSON>] = [:]
     private var nextId = 1
+    /// What went to a token and waits to know if that token still exists (`sendToOrElse`).
+    private var tokenWatch: [String: (token: String, at: Date, onGone: () -> Void)] = [:]
     private var listeners: [UUID: (Incoming) -> Void] = [:]
     private var _closed: String?
     public private(set) var token: String?
@@ -224,6 +226,14 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             if let c = o["channel"]?.string, let t = o["token"]?.string { emit(.joined(channel: c, token: t)) }
         case "left":
             if let c = o["channel"]?.string, let t = o["token"]?.string { emit(.left(channel: c, token: t)) }
+        case "message_sent":
+            let w: (token: String, at: Date, onGone: () -> Void)? = id.flatMap { i in lock.withLock { tokenWatch.removeValue(forKey: i) } }
+            if let w, (o["failed"]?.array ?? []).contains(where: { $0.string == w.token }) {
+                lock.withLock { tokenPubkeys[w.token] = nil; helloSent.remove(w.token) }
+                emit(.peerGone(token: w.token, channel: nil))
+                w.onGone()
+            }
+            if let id, let p = take(id) { p.finish(.success(o)) }
         case "error":
             if let id, let p = take(id) {
                 p.finish(.failure(ProxyError(o["error"]?.string ?? "proxy error", code: o["code"]?.string ?? "proxy-error")))
@@ -307,6 +317,27 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// A message to connection tokens, `{ to, message }` like `_proxySendOne` of the JS client.
     public func sendTo(_ tokens: [String], _ payload: JSON) throws {
         try send(["to": .array(tokens.map { .string($0) }), "message": .string(payload.text)])
+    }
+
+    /// `sendTo` for ONE token, but a dead token does not swallow the message. A token is a
+    /// connection: when the other side restarts its app it stops existing, and the proxy answers
+    /// `message_sent` with it in `failed` (it only answers when something fails). Then `onGone`
+    /// runs — the caller sends the same thing by pubkey, to the queue — and `.peerGone` is
+    /// emitted. The same as `sendToOrElse` in Kotlin and `sendSealedTo` in proxy-client 0.26.
+    public func sendToOrElse(_ token: String, _ payload: JSON, onGone: @escaping () -> Void) throws {
+        let id: String = lock.withLock {
+            let now = Date()
+            tokenWatch = tokenWatch.filter { now.timeIntervalSince($0.value.at) < 15 }
+            let id = "msg_\(nextId)"; nextId += 1
+            tokenWatch[id] = (token, now, onGone)
+            return id
+        }
+        do {
+            try send(["to": .array([.string(token)]), "message": .string(payload.text), "id": .string(id)])
+        } catch {
+            _ = lock.withLock { tokenWatch.removeValue(forKey: id) }
+            throw error
+        }
     }
 
     /// `buildSignedChannel`: the entry is signed by the TRANSPORT key of this app, not the identity.
