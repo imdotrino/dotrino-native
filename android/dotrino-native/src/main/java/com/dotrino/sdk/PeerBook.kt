@@ -116,10 +116,56 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
         return change { upsert(it, publickey, allowed) }
     }
 
-    /** `removeContact`: the record stays (ratings, card); it just stops being a contact. */
+    /**
+     * `removeContact`: the record stays (ratings, card); it just stops being a contact. It is a
+     * CHANGE with a date (`changedAt`), so it does not come back from another device ([PeerBookBackup]).
+     */
     suspend fun removeContact(publickey: String): JsonObject? = change { peers ->
         val rec = peers[publickey] ?: return@change null
-        JsonObject(rec - "isContact").also { peers[publickey] = it }
+        JsonObject(rec - "isContact" + ("changedAt" to JsonPrimitive(System.currentTimeMillis()))).also { peers[publickey] = it }
+    }
+
+    /** Every record, by key (for [PeerBookBackup]). */
+    suspend fun all(): Map<String, JsonObject> = lock.withLock { read() }
+
+    /**
+     * Records from another device of the profile (the vault), MERGED with these like the identity
+     * does (`mergePeerMaps`): the record changed LATER wins, also for being a contact or not; the
+     * first and last seen and the change date keep the widest; a card missing here is taken; its
+     * endorsements are verified one by one ([mergeEndorsements]). Returns how many changed here.
+     */
+    suspend fun mergeFrom(records: List<JsonObject>): Int {
+        var n = 0
+        val endorsements = mutableListOf<Pair<String, List<JsonObject>>>()
+        change { peers ->
+            for (b in records) {
+                val pk = b.str("publickey") ?: continue
+                val a = peers[pk]
+                val incomingEnd = (b["endorsements"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                if (incomingEnd.isNotEmpty()) endorsements += pk to incomingEnd
+                val base = b - "endorsements"
+                if (a == null) { peers[pk] = JsonObject(base); n++; continue }
+                val m = a.toMutableMap()
+                val newer = if (PeerBookBackup.stampOf(b) > PeerBookBackup.stampOf(a)) b else a
+                if (newer === b) {
+                    for (k in listOf("nickname", "notes", "contactNotes", "encryptionPubkey", "rating")) b[k]?.let { m[k] = it }
+                }
+                if ((newer["isContact"] as? JsonPrimitive)?.content == "true") m["isContact"] = JsonPrimitive(true) else m.remove("isContact")
+                val first = listOfNotNull(a.long("firstSeen"), b.long("firstSeen")).minOrNull()
+                if (first != null) m["firstSeen"] = JsonPrimitive(first)
+                m["lastSeen"] = JsonPrimitive(maxOf(a.long("lastSeen") ?: 0, b.long("lastSeen") ?: 0))
+                val changedAt = maxOf(a.long("changedAt") ?: 0, b.long("changedAt") ?: 0)
+                if (changedAt > 0) m["changedAt"] = JsonPrimitive(changedAt)
+                if (m["card"] == null && b["card"] is JsonObject) m["card"] = b["card"]!!
+                val mine = b["myRating"] as? JsonObject
+                if (mine != null && ((a["myRating"] as? JsonObject)?.long("issuedAt") ?: -1) < (mine.long("issuedAt") ?: 0)) m["myRating"] = mine
+                val rec = JsonObject(m)
+                if (rec != a) { peers[pk] = rec; n++ }
+            }
+        }
+        // Others' ratings of that person: each one verified against its signer, never taken on trust.
+        for ((pk, list) in endorsements) mergeEndorsements(pk, list)
+        return n
     }
 
     /**

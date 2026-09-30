@@ -55,3 +55,55 @@ final class PeerBookTests: XCTestCase {
         XCTAssertEqual(try book().mergeEndorsements("SUBJ", [env]), 1)
     }
 }
+
+/// El libro de contactos en la bóveda: los mismos casos que `peerSync.test.mjs` y `PeerBookBackupTest.kt`.
+final class PeerBookBackupTests: XCTestCase {
+    final class FakeVault: @unchecked Sendable {
+        var t: [String: JSON] = [:]
+        func call(_ method: String, _ args: JSON) async throws -> JSON {
+            let th = PeerBookBackup.thread
+            switch method {
+            case "getThreadIndexes":
+                return ["indexes": [th: ["items": .array(t.values.map { .array([$0["id"]!, $0["ts"]!]) }), "tombs": []]], "next": .null]
+            case "getEntries":
+                let ids = args["refs"]?[th]?.array?.compactMap(\.string) ?? []
+                return ["threads": [th: .array(ids.compactMap { t[$0] })]]
+            case "importThreads":
+                for e in args["threads"]?[th]?.array ?? [] {
+                    let id = e["id"]!.string!
+                    if (t[id]?["ts"]?.int ?? -1) < (e["ts"]?.int ?? 0) { t[id] = e }
+                }
+                return ["ok": true]
+            default: throw NSError(domain: method, code: 0)
+            }
+        }
+    }
+
+    private func book() -> (PeerBook, PeerBookBackup) {
+        let keys = ProfileTests.SoftKeys.fresh()
+        let b = PeerBook(storage: PeerBook.MemoryStorage(), profile: Profile.of(keys))
+        return (b, PeerBookBackup(profile: Profile.of(keys), book: b))
+    }
+
+    func testAContactReachesTheOtherDeviceAndRemovingItToo() async throws {
+        let v = FakeVault()
+        let (a, sa) = book(); let (b, sb) = book()
+        _ = try a.addContact("X", nickname: "Ana")
+        _ = try await sa.reconcile(v.call)
+        XCTAssertEqual(try await sb.reconcile(v.call), 1)
+        XCTAssertEqual(try b.contacts().first?["nickname"]?.string, "Ana")
+
+        try await Task.sleep(nanoseconds: 5_000_000)
+        _ = try b.removeContact("X")
+        _ = try await sb.reconcile(v.call)
+        _ = try await sa.reconcile(v.call)
+        XCTAssertTrue(try a.contacts().isEmpty, "the removed contact does not come back")
+
+        XCTAssertEqual(try await sa.reconcile(v.call), 0)
+        XCTAssertEqual(try await sb.reconcile(v.call), 0)
+    }
+
+    func testTheEntryIdIsTheWebOne() {
+        XCTAssertEqual(PeerBookBackup.idOf(#"{"crv":"P-256","kty":"EC","x":"ñ"}"#), "988a93c5b4a24186e320c9615b0f85f9")
+    }
+}

@@ -115,13 +115,52 @@ public final class PeerBook: @unchecked Sendable {
 
     /// `removeContact`: the record stays (ratings, card); it just stops being a contact.
     @discardableResult
+    /// `removeContact`: the record stays; it just stops being a contact. It is a CHANGE with a
+    /// date (`changedAt`), so it does not come back from another device (`PeerBookBackup`).
     public func removeContact(_ publickey: String) throws -> JSON? {
         try change { peers in
             guard var rec = peers[publickey]?.object else { return nil }
             rec["isContact"] = nil
+            rec["changedAt"] = .int(nowMs())
             peers[publickey] = .object(rec)
             return .object(rec)
         }
+    }
+
+    /// Every record, by key (for `PeerBookBackup`).
+    public func all() throws -> [String: JSON] { try lock.withLock { try read() } }
+
+    /// Records from another device of the profile (the vault), MERGED like the identity does:
+    /// the record changed LATER wins, also for being a contact; first/last seen and the change
+    /// date keep the widest; a missing card is taken; endorsements are verified one by one. Same
+    /// as `PeerBook.mergeFrom` in Kotlin. Returns how many changed here.
+    public func mergeFrom(_ records: [JSON]) throws -> Int {
+        var n = 0
+        var endorsements: [(String, [JSON])] = []
+        try change { peers in
+            for b in records {
+                guard let bo = b.object, let pk = bo["publickey"]?.string else { continue }
+                let incoming = bo["endorsements"]?.array ?? []
+                if !incoming.isEmpty { endorsements.append((pk, incoming)) }
+                var base = bo; base["endorsements"] = nil
+                guard let a = peers[pk]?.object else { peers[pk] = .object(base); n += 1; continue }
+                var m = a
+                let bNewer = PeerBookBackup.stampOf(b) > PeerBookBackup.stampOf(.object(a))
+                if bNewer { for k in ["nickname", "notes", "contactNotes", "encryptionPubkey", "rating"] { if let v = bo[k] { m[k] = v } } }
+                let newer = bNewer ? bo : a
+                if newer["isContact"]?.bool == true { m["isContact"] = true } else { m["isContact"] = nil }
+                if let f = [a["firstSeen"]?.int, bo["firstSeen"]?.int].compactMap({ $0 }).min() { m["firstSeen"] = .int(f) }
+                m["lastSeen"] = .int(max(a["lastSeen"]?.int ?? 0, bo["lastSeen"]?.int ?? 0))
+                let changedAt = max(a["changedAt"]?.int ?? 0, bo["changedAt"]?.int ?? 0)
+                if changedAt > 0 { m["changedAt"] = .int(changedAt) }
+                if m["card"] == nil, let c = bo["card"], c.object != nil { m["card"] = c }
+                if let mine = bo["myRating"], mine.object != nil, (a["myRating"]?["issuedAt"]?.int ?? -1) < (mine["issuedAt"]?.int ?? 0) { m["myRating"] = mine }
+                if JSON.object(m) != JSON.object(a) { peers[pk] = .object(m); n += 1 }
+            }
+        }
+        // Others' ratings: each one verified against its signer, never taken on trust.
+        for (pk, list) in endorsements { _ = try mergeEndorsements(pk, list) }
+        return n
     }
 
     /// `adoptPeerCard`: first time accepted; afterwards only if it does not go back and the
