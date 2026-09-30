@@ -8,26 +8,22 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 
 /**
- * EL TRINO: el sonido de los avisos de Dotrino, uno de siete al azar. El mismo en iOS
- * (`DotrinoRing.swift`, y el proxio elige uno en cada aviso de APNs).
+ * EL TRINO: el sonido de TODOS los avisos de Dotrino, uno solo para todo el ecosistema (dueño, 2026-09-30). El mismo en iOS
+ * (`DotrinoRing.swift`; el proxio lo pone en cada aviso de APNs).
  *
  * En Android el sonido de un canal es fijo, así que los canales de Dotrino se crean MUDOS y el
  * trino lo toca [play] al mostrar el aviso. Eso cubre también lo que no pasa por el sistema:
  * con la app abierta un pedido o un mensaje entra directo por la conexión, no llega ningún
  * aviso de Google, y es la app la que tiene que sonar.
  *
- * LOS SONIDOS SON LOS ORIGINALES (`sound/trinos/trino-0N.wav` en la raíz del ecosistema), ya con
+ * EL SONIDO ES EL ORIGINAL (`sound/trinos/trino-01a.wav` en la raíz del ecosistema), ya con
  * su volumen. Aquí y en iOS solo se CAMBIA EL FORMATO, sin filtros ni ganancia (dueño,
  * 2026-09-30: si hay que subirlos, se editan los originales):
  *
- *     ffmpeg -i trino-0N.wav -c:a libvorbis -q:a 6 dotrino_ring_N.ogg     # Android
- *     ffmpeg -i trino-0N.wav -c:a adpcm_ima_qt -f caf dotrino-ring-N.caf  # iOS
+ *     ffmpeg -i trino-01a.wav -c:a libvorbis -q:a 6 dotrino_ring.ogg     # Android
+ *     ffmpeg -i trino-01a.wav -c:a adpcm_ima_qt -f caf dotrino-ring.caf  # iOS
  */
 object DotrinoRing {
-    private val SOUNDS = intArrayOf(
-        R.raw.dotrino_ring_1, R.raw.dotrino_ring_2, R.raw.dotrino_ring_3, R.raw.dotrino_ring_4,
-        R.raw.dotrino_ring_5, R.raw.dotrino_ring_6, R.raw.dotrino_ring_7,
-    )
 
     // Los que están sonando. Sin una referencia fuerte, el recolector se lleva el MediaPlayer a
     // media reproducción («finalized without being released») y el trino se corta.
@@ -57,7 +53,7 @@ object DotrinoRing {
     }
 
     /**
-     * Toca un trino al azar, si el teléfono deja sonar: en silencio, en vibración o con «No
+     * Toca el trino, si el teléfono deja sonar: en silencio, en vibración o con «No
      * molestar», no suena (lo mismo que haría el sistema con un aviso).
      */
     fun play(ctx: Context) {
@@ -65,7 +61,7 @@ object DotrinoRing {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
-        val mp = MediaPlayer.create(ctx, SOUNDS.random(), attrs, am.generateAudioSessionId()) ?: return
+        val mp = MediaPlayer.create(ctx, R.raw.dotrino_ring, attrs, am.generateAudioSessionId()) ?: return
         // Softer than the stream's full level (dueño, 2026-09-30: «muy fuerte en Android»): on
         // Android the notification stream plays it at the phone's level, where iOS is gentler.
         mp.setVolume(VOLUME, VOLUME)

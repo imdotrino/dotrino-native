@@ -22,18 +22,15 @@ final class PushTests: XCTestCase {
     func testTheRingsAreInstalledWhereIOSLooksForThem() throws {
         DotrinoPush.installRings()
         let lib = try XCTUnwrap(FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first)
-        for n in 1...DotrinoPush.ringCount {
-            let f = lib.appendingPathComponent("Sounds/dotrino-ring-\(n).caf")
-            XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), f.lastPathComponent)
-        }
+        let f = lib.appendingPathComponent("Sounds/dotrino-ring.caf")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), f.lastPathComponent)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lib.appendingPathComponent("Sounds/dotrino-ring-1.caf").path))
     }
 }
 
 final class RingTests: XCTestCase {
-    func testARandomRingNameIsOneOfTheShippedOnes() {
-        for _ in 0..<50 {
-            XCTAssertTrue(DotrinoRing.randomName().range(of: #"^dotrino-ring-[1-7]\.caf$"#, options: .regularExpression) != nil)
-        }
+    func testOneRingForEveryAlert() {
+        XCTAssertEqual(DotrinoRing.soundName, "dotrino-ring.caf")
     }
 }
 

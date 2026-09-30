@@ -31,28 +31,24 @@ public enum DotrinoPush {
         }
     }
 
-    /// Cuántos trinos hay: el proxio elige uno al azar en cada aviso (`dotrino-ring-<n>.caf`).
-    /// Si cambia, cambia también `RINGS` en `dotrino-proxy/apns.js`.
-    public static let ringCount = 7
+    /// EL TRINO, uno solo para todos los avisos: el proxio pone este nombre en cada aviso.
+    /// Si cambia, cambia también `RING` en `dotrino-proxy/apns.js`.
+    public static let ringName = "dotrino-ring.caf"
 
     /// EL TONO: iOS solo suena un sonido propio si está en el paquete de la app o en su
-    /// `Library/Sounds`. Los trinos viven en esta librería, así que se copian ahí (y otra vez si cambian) y
-    /// ninguna app los tiene que traer. Si falta uno, iOS usa el sonido por defecto.
+    /// `Library/Sounds`. El trino vive en esta librería, así que se copia ahí (y otra vez si
+    /// cambia) y ninguna app lo tiene que traer. Los siete trinos de antes se borran.
     static func installRings(fm: FileManager = .default) {
         guard let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
         let dir = lib.appendingPathComponent("Sounds", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        for n in 1...ringCount {
-            let name = "dotrino-ring-\(n)"
-            let dest = dir.appendingPathComponent(name + ".caf")
-            guard let src = Bundle.module.url(forResource: name, withExtension: "caf")
-                ?? Bundle.module.url(forResource: name, withExtension: "caf", subdirectory: "Sounds"),
-                  let data = try? Data(contentsOf: src) else { continue }
-            // Se copia de nuevo cuando la librería trae otro sonido con el mismo nombre (son
-            // unos 40 KB: comparar es barato, y así un trino nuevo llega con la actualización).
-            if (try? Data(contentsOf: dest)) == data { continue }
-            try? data.write(to: dest, options: .atomic)
-        }
+        for n in 1...7 { try? fm.removeItem(at: dir.appendingPathComponent("dotrino-ring-\(n).caf")) }
+        let dest = dir.appendingPathComponent(ringName)
+        guard let src = Bundle.module.url(forResource: "dotrino-ring", withExtension: "caf")
+            ?? Bundle.module.url(forResource: "dotrino-ring", withExtension: "caf", subdirectory: "Sounds"),
+              let data = try? Data(contentsOf: src) else { return }
+        if (try? Data(contentsOf: dest)) == data { return }
+        try? data.write(to: dest, options: .atomic)
     }
 
     /// Lo que Apple devolvió, listo para `SealedSession.setPushToken`.
