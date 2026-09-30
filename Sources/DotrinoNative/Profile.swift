@@ -33,6 +33,12 @@ public final class Profile: @unchecked Sendable {
     private let history: [JSON]
     /// The link with the owner's vault, when this phone is paired (`dotrino.identity.vault.cert`).
     public let vault: VaultLink?
+    /// The profile's NAME (`me.nickname`), what the web topbar and the profile list show.
+    public let name: String?
+    /// The photo the person uploaded (`me.avatar`, a data-URI); nil = the identicon of `avatarSeed`.
+    public let avatar: String?
+    /// What the identicon is drawn from: the key the profile list gives, as the web does.
+    public let avatarSeed: String
 
     /// `{ cert, master, proxy, deviceId }`: whom to ask, through which proxy, and my paper.
     public struct VaultLink: Sendable {
@@ -40,8 +46,10 @@ public final class Profile: @unchecked Sendable {
         public init(master: String, proxy: String, cert: JSON, deviceId: String) { self.master = master; self.proxy = proxy; self.cert = cert; self.deviceId = deviceId }
     }
 
-    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil, history: [JSON] = [], vault: VaultLink? = nil) {
+    private init(publickey: String, encPub: String, acta: JSON?, renounces: [JSON], keys: DeviceKeys, pid: String? = nil, history: [JSON] = [], vault: VaultLink? = nil,
+                 name: String? = nil, avatar: String? = nil, avatarSeed: String? = nil) {
         self.publickey = publickey; self.encPub = encPub; self.acta = acta; self.renounces = renounces; self.keys = keys; self.pid = pid; self.history = history; self.vault = vault
+        self.name = name; self.avatar = avatar; self.avatarSeed = avatarSeed ?? publickey
     }
 
     /// This device's key, for the vault client (the phone talks to its vault as the profile's key).
@@ -127,7 +135,14 @@ public final class Profile: @unchecked Sendable {
             let same = d == nil || d?["useIdentityKey"]?.bool == true || (Delegation.samePubkey(d?["publickey"]?.string, pub) && d?["privateJwk"] == nil)
             if same { link = VaultLink(master: master, proxy: proxy, cert: cert, deviceId: v["deviceId"]?.string ?? "") }
         }
-        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid, history: history, vault: link)
+        // WHO IT LOOKS LIKE: the same name and picture as the web topbar (`me` of this profile,
+        // and the key of its entry in the profile list for the identicon).
+        let me = items["kv:" + scoped(pid, "dotrino.identity.me")].flatMap { try? JSON.parse($0) }
+        let entry = items["kv:dotrino.identity.profiles"].flatMap { try? JSON.parse($0) }?.array?.first { $0["id"]?.string == pid }
+        let name = [me?["nickname"]?.string, entry?["name"]?.string].compactMap { $0 }.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let avatar = me?["avatar"]?.string.flatMap { $0.hasPrefix("data:image/") ? $0 : nil }
+        return Profile(publickey: pub, encPub: encPub, acta: acta, renounces: renounces, keys: try keysFor(kid), pid: pid, history: history, vault: link,
+                       name: name, avatar: avatar, avatarSeed: entry?["pubkey"]?.string)
     }
 
     /// For tests and headless tools: a profile from keys in hand.

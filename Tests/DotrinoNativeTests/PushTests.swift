@@ -36,3 +36,21 @@ final class RingTests: XCTestCase {
         }
     }
 }
+
+/// El identicon es el MISMO que el de la web: estos valores salen de `avatarSvg` de
+/// `@dotrino/identity/avatar` (tono y casillas llenas "col,fila"). Los mismos que `AvatarTest.kt`.
+final class AvatarTests: XCTestCase {
+    func testTheIdenticonIsTheWebOne() {
+        let vectors: [(String, Int, String)] = [
+            ("dotrino", 298, "0,0 0,1 0,2 0,3 0,4 1,0 1,2 1,3 3,0 3,2 3,3 4,0 4,1 4,2 4,3 4,4"),
+            ("{\"crv\":\"P-256\",\"ext\":true,\"key_ops\":[\"verify\"],\"kty\":\"EC\",\"x\":\"abc\",\"y\":\"déf\"}", 136, "0,1 0,2 0,3 1,1 2,0 2,3 3,1 4,1 4,2 4,3"),
+            ("ñandú 🐦", 72, "0,0 0,1 0,2 0,4 1,0 3,0 4,0 4,1 4,2 4,4"),
+        ]
+        for (seed, hue, cells) in vectors {
+            let p = DotrinoAvatar.pattern(seed)
+            XCTAssertEqual(p.hue, hue, seed)
+            let got = (0..<5).flatMap { c in (0..<5).filter { p.cells[c][$0] }.map { "\(c),\($0)" } }.sorted().joined(separator: " ")
+            XCTAssertEqual(got, cells, seed)
+        }
+    }
+}

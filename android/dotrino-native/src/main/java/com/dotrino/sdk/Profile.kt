@@ -37,6 +37,12 @@ class Profile private constructor(
     private val history: JsonArray = JsonArray(emptyList()),
     /** The link with the owner's vault, when this phone is paired (`dotrino.identity.vault.cert`). */
     val vault: VaultLink? = null,
+    /** The profile's NAME (`me.nickname`), what the web topbar and the profile list show. */
+    val name: String? = null,
+    /** The photo the person uploaded (`me.avatar`, a data-URI); null = the identicon of [avatarSeed]. */
+    val avatar: String? = null,
+    /** What the identicon is drawn from: the key the profile list gives, as the web does. */
+    val avatarSeed: String = publickey,
 ) {
     /** `{ cert, master, proxy, deviceId }`: whom to ask (the vault's key), through which proxy, and my paper. */
     data class VaultLink(val master: String, val proxy: String, val cert: JsonObject, val deviceId: String)
@@ -69,7 +75,16 @@ class Profile private constructor(
             val acta = items["kv:" + scoped(pid, "dotrino.identity.acta")]?.let { json.parseToJsonElement(it) as? JsonObject }
             val renounces = items["kv:" + scoped(pid, "dotrino.identity.renounced")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
             val history = items["kv:" + scoped(pid, "dotrino.identity.acta.history")]?.let { json.parseToJsonElement(it) as? JsonArray } ?: JsonArray(emptyList())
-            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid, history, vaultLinkOf(items, pid, publickey))
+            // WHO IT LOOKS LIKE: the same name and picture as the web topbar (`me` of this profile,
+            // and the key of its entry in the profile list for the identicon).
+            val me = items["kv:" + scoped(pid, "dotrino.identity.me")]?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+            val entry = items["kv:dotrino.identity.profiles"]?.let { runCatching { json.parseToJsonElement(it) as? JsonArray }.getOrNull() }
+                ?.firstOrNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.content == pid } as? JsonObject
+            val name = (me?.get("nickname") as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                ?: (entry?.get("name") as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+            val avatar = (me?.get("avatar") as? JsonPrimitive)?.content?.takeIf { it.startsWith("data:image/") }
+            val seed = (entry?.get("pubkey") as? JsonPrimitive)?.content ?: publickey
+            return Profile(publickey, encPub, acta, renounces, keysFor(kid), pid, history, vaultLinkOf(items, pid, publickey), name, avatar, seed)
         }
 
         /**
@@ -104,6 +119,9 @@ class Profile private constructor(
      * profile of one device, with no acta.
      */
     val card: JsonObject? get() = acta?.get("card") as? JsonObject
+
+    /** What the topbar shows of this profile: its name and its avatar, as the web does. */
+    fun topbar() = com.dotrino.sdk.ui.DotrinoTopbar.Profile(name, avatarSeed, avatar)
 
     /**
      * WHO I AM to others: the `profileId` of the acta (the genesis key, which never changes) —

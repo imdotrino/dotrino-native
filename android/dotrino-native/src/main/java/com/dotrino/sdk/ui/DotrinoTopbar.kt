@@ -42,10 +42,21 @@ class DotrinoTopbar(
      * identity (opening profile.dotrino.com in a browser would show ANOTHER identity).
      */
     profile: Profile? = null,
+    /**
+     * false = WITHOUT the profile button. Only for a screen that is not of ONE profile (the
+     * Dotrino app's Requests list every profile of the phone): there a single avatar says the
+     * wrong thing.
+     */
+    showProfile: Boolean = true,
     onBrand: () -> Unit,
 ) {
+    private val showProfile = showProfile
     data class Brand(val name: String, val icon: Int)
-    data class Profile(val name: String?, val key: String)
+    /**
+     * [name]: the profile's name. [key]: what its identicon is drawn from (the profile's key).
+     * [avatar]: the photo the person uploaded (data-URI), if any. `Profile.topbar()` builds it.
+     */
+    data class Profile(val name: String?, val key: String, val avatar: String? = null)
     private val profile = profile
 
     companion object {
@@ -84,7 +95,7 @@ class DotrinoTopbar(
         addView(brand(brand, onBrand), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         for (a in actions) addView(a)
         addView(lang())
-        addView(profileButton(), LinearLayout.LayoutParams(px(40), px(40)).apply { marginStart = px(10) })
+        if (showProfile) addView(profileButton(), LinearLayout.LayoutParams(px(40), px(40)).apply { marginStart = px(10) })
         addView(ImageButton(activity).apply {
             setImageResource(R.drawable.dotrino_coin)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -106,19 +117,19 @@ class DotrinoTopbar(
         })
     }
 
-    private fun profileButton() = TextView(activity).apply {
+    /** The PROFILE'S AVATAR, like the web topbar: its photo or its identicon; a silhouette without one. */
+    private fun profileButton(): View {
         val p = profile
-        text = p?.name?.trim()?.firstOrNull()?.uppercase() ?: "👤"
-        gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt()); setTypeface(typeface, Typeface.BOLD)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        val palette = intArrayOf(0xFF00658C.toInt(), 0xFF006B5C.toInt(), 0xFF665590.toInt(), 0xFF8C4A00.toInt(), 0xFF3F6B00.toInt(), 0xFF7A3E6B.toInt())
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (p != null) palette[Math.floorMod(p.key.hashCode(), palette.size)] else color(R.color.dotrino_muted))
+        val v: View = if (p != null) DotrinoAvatarView(activity, p.key, p.avatar) else TextView(activity).apply {
+            text = "👤"; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color(R.color.dotrino_muted)) }
         }
-        contentDescription = activity.getString(R.string.dotrino_profile_cta)
-        tag = "profile-button"
-        setOnClickListener { showProfile() }
+        return v.apply {
+            contentDescription = activity.getString(R.string.dotrino_profile_cta)
+            tag = "profile-button"
+            isClickable = true
+            setOnClickListener { showProfile() }
+        }
     }
 
     /** Where the profiles are managed on a phone: the Dotrino app (or Play, if it is missing). */

@@ -88,6 +88,22 @@ class ProfileTest {
         assertTrue(Crypto.verify(bound.publickey, identify, bound.signData(identify)))
     }
 
+    @Test fun takesItsNameAndAvatarFromTheIdentityLikeTheWeb() = runBlocking {
+        val keys = TestKeys.fresh()
+        val plain = Profile.load(items(keys)) { keys }
+        assertEquals(null, plain.name); assertEquals(null, plain.avatar); assertEquals(keys.publickey, plain.avatarSeed)
+
+        val m = items(keys).toMutableMap()
+        m["kv:dotrino.identity.profiles"] = "[{\"id\":\"p0\",\"name\":\"Otro\",\"pubkey\":\"K0\"},{\"id\":\"p1\",\"name\":\"Lista\",\"pubkey\":\"SEMILLA\"}]"
+        m["kv:dotrino.identity.p.p1.me"] = "{\"nickname\":\"Santi\",\"avatar\":\"data:image/png;base64,AAAA\"}"
+        val full = Profile.load(m) { keys }
+        assertEquals("Santi", full.name)                      // `me` manda sobre la lista
+        assertEquals("data:image/png;base64,AAAA", full.avatar)
+        assertEquals("SEMILLA", full.avatarSeed)               // la llave de SU entrada en la lista
+        m.remove("kv:dotrino.identity.p.p1.me")
+        assertEquals("Lista", Profile.load(m) { keys }.name)
+    }
+
     @Test fun noProfileSaysSo() {
         val e = assertThrows(Profile.ProfileError::class.java) { runBlocking { Profile.load(emptyMap()) { error("no keys") } } }
         assertEquals("no-profile", e.code)

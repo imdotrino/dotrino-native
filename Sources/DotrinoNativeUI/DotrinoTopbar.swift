@@ -26,14 +26,16 @@ public struct DotrinoTopbar<Actions: View>: View {
     /// The PROFILE BUTTON (CONVENCIONES §6.1): the active profile's initial and key. Nil = it
     /// still shows. On a phone the profiles are managed in the Dotrino app, with the phone's
     /// identity — a browser would show another one.
-    public struct Profile {
-        let name: String?, key: String
-        public init(name: String?, key: String) { self.name = name; self.key = key }
-    }
+    /// Outside the generic type, so it is ONE type whatever the actions are.
+    public typealias Profile = DotrinoTopbarProfile
+    /// false = WITHOUT the profile button. Only for a screen that is not of ONE profile (the
+    /// Dotrino app's Requests list every profile of the phone): there a single avatar says the wrong thing.
+    private let showProfile: Bool
     @Environment(\.openURL) private var openURL
 
     /// [repo]: the GitHub repo where «Report a bug» goes. [brand]: nil = «Dotrino».
-    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, @ViewBuilder actions: () -> Actions) {
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true, @ViewBuilder actions: () -> Actions) {
+        self.showProfile = showProfile
         self.repo = repo
         self.brand = brand
         self.profile = profile
@@ -67,13 +69,17 @@ public struct DotrinoTopbar<Actions: View>: View {
             }
             .clipShape(Capsule())
             .overlay(Capsule().stroke(DotrinoPalette.muted.opacity(0.4)))
-            Button { profileOpen = true } label: {
-                Circle().fill(profile.map { AvatarPalette.colors[AvatarPalette.index($0.key)] } ?? DotrinoPalette.muted).frame(width: 34, height: 34)
-                    .overlay(Text(profile?.name?.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "👤")
-                        .font(.system(size: 15, weight: .bold)).foregroundColor(.white))
+            if showProfile {
+                // The PROFILE'S AVATAR, like the web topbar: its photo or its identicon.
+                Button { profileOpen = true } label: {
+                    Group {
+                        if let p = profile { DotrinoAvatarView(seed: p.key, photo: p.avatar) }
+                        else { Circle().fill(DotrinoPalette.muted).overlay(Text("👤").font(.system(size: 15))) }
+                    }.frame(width: 34, height: 34)
+                }
+                .accessibilityLabel(lang.text("dotrino_profile_cta", in: .module))
+                .accessibilityIdentifier("profile-button")
             }
-            .accessibilityLabel(lang.text("dotrino_profile_cta", in: .module))
-            .accessibilityIdentifier("profile-button")
             Button { support = true } label: {
                 Image("DotrinoCoin", bundle: .module).resizable().frame(width: 34, height: 34)
             }
@@ -85,6 +91,7 @@ public struct DotrinoTopbar<Actions: View>: View {
         .sheet(isPresented: $support) { SupportSheet(repo: repo, onClose: { support = false }) }
         .sheet(isPresented: $profileOpen) {
             VStack(spacing: 14) {
+                if let p = profile { DotrinoAvatarView(seed: p.key, photo: p.avatar).frame(width: 64, height: 64) }
                 Text(profile?.name.flatMap { $0.isEmpty ? nil : $0 } ?? lang.text("dotrino_profile_cta", in: .module)).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
                 Text(lang.text("dotrino_profile_message", in: .module)).font(.callout).foregroundColor(DotrinoPalette.muted).multilineTextAlignment(.center)
                 // The Dotrino app's page: «Open» if it is installed, «Get» if not. (It has no URL
@@ -100,8 +107,8 @@ public struct DotrinoTopbar<Actions: View>: View {
 }
 
 extension DotrinoTopbar where Actions == EmptyView {
-    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil) {
-        self.init(repo: repo, brand: brand, profile: profile) { EmptyView() }
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true) {
+        self.init(repo: repo, brand: brand, profile: profile, showProfile: showProfile) { EmptyView() }
     }
 }
 
@@ -176,4 +183,16 @@ enum AvatarPalette {
         Color(red: 0x3F / 255, green: 0x6B / 255, blue: 0x00 / 255), Color(red: 0x7A / 255, green: 0x3E / 255, blue: 0x6B / 255),
     ]
     static func index(_ key: String) -> Int { abs(key.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }) % colors.count }
+}
+
+/// What the topbar shows of a profile. `name`: its name. `key`: what its identicon is drawn from
+/// (the profile's key). `avatar`: the photo the person uploaded (data-URI), if any.
+public struct DotrinoTopbarProfile {
+    let name: String?, key: String, avatar: String?
+    public init(name: String?, key: String, avatar: String? = nil) { self.name = name; self.key = key; self.avatar = avatar }
+}
+
+extension DotrinoNative.Profile {
+    /// What the topbar shows of this profile: its name and its avatar, as the web does.
+    public var topbar: DotrinoTopbarProfile { .init(name: name, key: avatarSeed, avatar: avatar) }
 }
