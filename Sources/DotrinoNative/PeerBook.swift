@@ -65,11 +65,17 @@ public final class PeerBook: @unchecked Sendable {
 
     private func write(_ peers: [String: JSON]) throws { try storage.save(JSON.object(peers).text) }
 
-    private func change<T>(_ f: (inout [String: JSON]) throws -> T) throws -> T {
-        lock.lock(); defer { lock.unlock() }
-        var peers = try read()
-        let r = try f(&peers)
-        try write(peers)
+    /// Something in the book changed HERE (a contact added, removed, renamed…): the app backs it
+    /// up right away (`PeerBookBackup`). Not called for what came FROM the vault (`mergeFrom`).
+    public var onChange: (() -> Void)?
+
+    private func change<T>(notify: Bool = true, _ f: (inout [String: JSON]) throws -> T) throws -> T {
+        lock.lock()
+        var peers: [String: JSON]
+        let r: T
+        do { peers = try read(); r = try f(&peers); try write(peers) } catch { lock.unlock(); throw error }
+        lock.unlock()
+        if notify { onChange?() }
         return r
     }
 
@@ -137,7 +143,7 @@ public final class PeerBook: @unchecked Sendable {
     public func mergeFrom(_ records: [JSON]) throws -> Int {
         var n = 0
         var endorsements: [(String, [JSON])] = []
-        try change { peers in
+        try change(notify: false) { peers in
             for b in records {
                 guard let bo = b.object, let pk = bo["publickey"]?.string else { continue }
                 let incoming = bo["endorsements"]?.array ?? []

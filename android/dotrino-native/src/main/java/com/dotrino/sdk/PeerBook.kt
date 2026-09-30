@@ -76,12 +76,19 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
 
     private suspend fun write(peers: Map<String, JsonObject>) = storage.save(JsonObject(peers).toString())
 
-    private suspend fun <T> change(f: (MutableMap<String, JsonObject>) -> T): T = lock.withLock {
+    /**
+     * Something in the book changed HERE (a contact added, removed, renamed…): the app backs it up
+     * right away ([PeerBookBackup]) instead of waiting for its next round. Not called for what
+     * came FROM the vault ([mergeFrom]): that would only upload it back.
+     */
+    @Volatile var onChange: (() -> Unit)? = null
+
+    private suspend fun <T> change(notify: Boolean = true, f: (MutableMap<String, JsonObject>) -> T): T = lock.withLock {
         val peers = read()
         val r = f(peers)
         write(peers)
         r
-    }
+    }.also { if (notify) onChange?.invoke() }
 
     /** `upsertPeer`: merge [patch] into the record and stamp `lastSeen`. */
     private fun upsert(peers: MutableMap<String, JsonObject>, publickey: String, patch: Map<String, JsonElement>): JsonObject {
@@ -137,7 +144,7 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
     suspend fun mergeFrom(records: List<JsonObject>): Int {
         var n = 0
         val endorsements = mutableListOf<Pair<String, List<JsonObject>>>()
-        change { peers ->
+        change(notify = false) { peers ->
             for (b in records) {
                 val pk = b.str("publickey") ?: continue
                 val a = peers[pk]
