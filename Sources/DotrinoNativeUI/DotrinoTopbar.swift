@@ -32,11 +32,19 @@ public struct DotrinoTopbar<Actions: View>: View {
     /// false = WITHOUT the profile button. Only for a screen that is not of ONE profile (the
     /// Dotrino app's Requests list every profile of the phone): there a single avatar says the wrong thing.
     private let showProfile: Bool
+    /// The active profile changed (switched, created, adopted, signed in): the app starts again
+    /// with it (changing profile is not reactive, as on the web). Nil = nothing to redo.
+    private let onProfileChanged: (() -> Void)?
+    @State private var profiles: [PhoneProfiles.Entry] = []
+    @State private var webURL: URL?
+    @State private var pidBeforeWeb: String?
     @Environment(\.openURL) private var openURL
 
     /// [repo]: the GitHub repo where «Report a bug» goes. [brand]: nil = «Dotrino».
-    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true, @ViewBuilder actions: () -> Actions) {
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true,
+                onProfileChanged: (() -> Void)? = nil, @ViewBuilder actions: () -> Actions) {
         self.showProfile = showProfile
+        self.onProfileChanged = onProfileChanged
         self.repo = repo
         self.brand = brand
         self.profile = profile
@@ -90,26 +98,86 @@ public struct DotrinoTopbar<Actions: View>: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(DotrinoPalette.card)
         .sheet(isPresented: $support) { SupportSheet(repo: repo, onClose: { support = false }) }
-        .sheet(isPresented: $profileOpen) {
-            VStack(spacing: 14) {
-                if let p = profile { DotrinoAvatarView(seed: p.key, photo: p.avatar).frame(width: 64, height: 64) }
-                Text(profile?.name.flatMap { $0.isEmpty ? nil : $0 } ?? lang.text("dotrino_profile_cta", in: .module)).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
-                Text(lang.text("dotrino_profile_message", in: .module)).font(.callout).foregroundColor(DotrinoPalette.muted).multilineTextAlignment(.center)
-                // The Dotrino app's page: «Open» if it is installed, «Get» if not. (It has no URL
-                // scheme yet for another app to open it directly: pending in dotrino-app iOS.)
-                Button(lang.text("dotrino_profile_open", in: .module)) { openURL(URL(string: "https://apps.apple.com/app/id6817137047")!) }
-                    .font(.body.weight(.bold)).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(Capsule().fill(DotrinoPalette.accent))
-                Button(lang.text("dotrino_support_close", in: .module)) { profileOpen = false }.foregroundColor(DotrinoPalette.fg)
-            }
-            .padding(24).presentationDetents([.medium])
+        .sheet(isPresented: $profileOpen) { profileMenu.presentationDetents([.medium, .large]) }
+        .fullScreenCover(item: Binding(get: { webURL.map { WebTarget(url: $0) } }, set: { webURL = $0?.url })) { t in
+            DotrinoWebSheet(url: t.url) { closeWeb() }
         }
     }
 }
 
+private struct WebTarget: Identifiable { let url: URL; var id: String { url.absoluteString } }
+
+extension DotrinoTopbar {
+    /// THE PROFILE MENU, like the web topbar's: this phone's profiles (avatar, name, the active
+    /// one ticked) to switch, and «Open my profile», «Create», «Adopt», «Sign in» (or «Sign out»).
+    /// Everything happens INSIDE this app, with the phone's identity: no other app is needed
+    /// (CONVENCIONES §16.2). Same as the Android menu.
+    @ViewBuilder var profileMenu: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(lang.text("dotrino_profiles", in: .module)).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
+                    .frame(maxWidth: .infinity).padding(.bottom, 8)
+                ForEach(profiles) { e in
+                    Button { if !e.current { switchTo(e.id) } } label: {
+                        HStack(spacing: 12) {
+                            DotrinoAvatarView(seed: e.seed, photo: e.avatar).frame(width: 36, height: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(e.name ?? lang.text("dotrino_profile_unnamed", in: .module)).font(e.current ? .body.weight(.bold) : .body)
+                                if let l = e.login { Text(l).font(.caption).foregroundColor(DotrinoPalette.muted) }
+                            }
+                            Spacer()
+                            if e.current { Image(systemName: "checkmark").foregroundColor(DotrinoPalette.accent) }
+                        }.padding(.vertical, 6).foregroundColor(DotrinoPalette.fg)
+                    }
+                    .accessibilityIdentifier("profile-\(e.id)")
+                }
+                Divider().padding(.vertical, 6)
+                menuLink(lang.text("dotrino_profile_open_mine", in: .module), DotrinoTopbarURLs.profile)
+                menuLink("＋ " + lang.text("dotrino_profile_new", in: .module), DotrinoTopbarURLs.create)
+                menuLink("↧ " + lang.text("dotrino_profile_adopt", in: .module), DotrinoTopbarURLs.adopt)
+                // «Sign out» of an account entered with a password is done on its page.
+                if profiles.contains(where: { $0.current && $0.login != nil }) {
+                    menuLink("⇥ " + lang.text("dotrino_profile_logout", in: .module), DotrinoTopbarURLs.profile)
+                } else {
+                    menuLink("⇤ " + lang.text("dotrino_profile_login", in: .module), DotrinoTopbarURLs.login)
+                }
+                Button(lang.text("dotrino_support_close", in: .module)) { profileOpen = false }
+                    .foregroundColor(DotrinoPalette.fg).frame(maxWidth: .infinity).padding(.top, 12)
+            }
+            .padding(24)
+        }
+        .onAppear { profiles = (try? PhoneProfiles.load()) ?? [] }
+    }
+
+    private func menuLink(_ label: String, _ url: URL) -> some View {
+        Button { profileOpen = false; pidBeforeWeb = PhoneProfiles.currentPid(); webURL = url } label: {
+            Text(label).font(.body).foregroundColor(DotrinoPalette.fg).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+        }
+    }
+
+    private func switchTo(_ pid: String) {
+        guard (try? PhoneProfiles.switchTo(pid)) != nil else { return }
+        profileOpen = false
+        onProfileChanged?()
+    }
+
+    private func closeWeb() {
+        webURL = nil
+        if PhoneProfiles.currentPid() != pidBeforeWeb { onProfileChanged?() }
+    }
+}
+
+/// The same pages the web topbar's menu opens.
+public enum DotrinoTopbarURLs {
+    public static let profile = URL(string: "https://profile.dotrino.com/")!
+    public static let create = URL(string: "https://profile.dotrino.com/create")!
+    public static let adopt = URL(string: "https://vault.dotrino.com/d")!
+    public static let login = URL(string: "https://profile.dotrino.com/login")!
+}
+
 extension DotrinoTopbar where Actions == EmptyView {
-    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true) {
-        self.init(repo: repo, brand: brand, profile: profile, showProfile: showProfile) { EmptyView() }
+    public init(repo: String, brand: Brand? = nil, profile: Profile? = nil, showProfile: Bool = true, onProfileChanged: (() -> Void)? = nil) {
+        self.init(repo: repo, brand: brand, profile: profile, showProfile: showProfile, onProfileChanged: onProfileChanged) { EmptyView() }
     }
 }
 

@@ -8,5 +8,10 @@
 "dotrino_support_share" = "Share";
 "dotrino_support_close" = "Close";
 "dotrino_profile_cta" = "My profile";
-"dotrino_profile_message" = "Your profiles, their devices and your vault are managed in the Dotrino app, with this phone's identity.";
-"dotrino_profile_open" = "Open the Dotrino app";
+"dotrino_profiles" = "Your profiles";
+"dotrino_profile_open_mine" = "Open my profile";
+"dotrino_profile_new" = "Create profile";
+"dotrino_profile_adopt" = "Adopt a profile";
+"dotrino_profile_login" = "Sign in";
+"dotrino_profile_logout" = "Sign out";
+"dotrino_profile_unnamed" = "Unnamed profile";
