@@ -22,6 +22,10 @@ object DotrinoRing {
         R.raw.dotrino_ring_5, R.raw.dotrino_ring_6, R.raw.dotrino_ring_7,
     )
 
+    // Los que están sonando. Sin una referencia fuerte, el recolector se lleva el MediaPlayer a
+    // media reproducción («finalized without being released») y el trino se corta.
+    private val playing = java.util.Collections.synchronizedSet(HashSet<MediaPlayer>())
+
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -52,8 +56,9 @@ object DotrinoRing {
         if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
         val mp = MediaPlayer.create(ctx, SOUNDS.random(), attrs, am.generateAudioSessionId()) ?: return
-        mp.setOnCompletionListener { it.release() }
-        mp.setOnErrorListener { p, _, _ -> p.release(); true }
+        playing.add(mp)
+        mp.setOnCompletionListener { playing.remove(it); it.release() }
+        mp.setOnErrorListener { p, _, _ -> playing.remove(p); p.release(); true }
         mp.start()
     }
 }
