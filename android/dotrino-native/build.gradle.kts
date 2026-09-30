@@ -32,6 +32,8 @@ dependencies {
     // QR (DotrinoQr): ZXing core — Java puro, sin red ni telemetría. Android no trae un lector
     // de QR sin los servicios de Google, y eso sí sería un SDK de terceros en el aparato.
     implementation("com.google.zxing:core:3.5.3")
+    // The web screen of the profile (DotrinoWebActivity): the bridge to the identity, by origin.
+    implementation("androidx.webkit:webkit:1.12.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

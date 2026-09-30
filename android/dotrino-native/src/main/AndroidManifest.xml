@@ -6,9 +6,18 @@
     <!-- La librería habla con el proxio (ProxyConnection, BroadcastHost). Sin esto, OkHttp
          lanza un SecurityException en su propio hilo y tumba la app entera. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The profile pages (DotrinoWebActivity) read a pairing QR with the camera. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <queries>
         <package android:name="com.dotrino.identity" />
         <!-- Las apps del catálogo (DotrinoApps): saber si están instaladas para abrirlas o instalarlas. -->
         <package android:name="com.dotrino.app" />
     </queries>
+    <application>
+        <!-- A page of the ecosystem inside the app, with the phone's identity (profile, create, adopt, sign in). -->
+        <activity android:name="com.dotrino.sdk.ui.DotrinoWebActivity" android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+    </application>
 </manifest>

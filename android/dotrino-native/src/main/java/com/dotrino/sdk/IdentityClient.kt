@@ -61,6 +61,12 @@ class IdentityClient(context: Context) {
             if (parts > 1) { putString(KEY_RID, rid); putInt(KEY_PART, part); putInt(KEY_PARTS, parts) }
         }
 
+        @Volatile private var sharedClient: IdentityClient? = null
+        /** ONE connection to the identity app per process (the web bridge, the profile menu…). */
+        fun shared(context: Context): IdentityClient = sharedClient ?: synchronized(this) {
+            sharedClient ?: IdentityClient(context.applicationContext).also { sharedClient = it }
+        }
+
         fun isInstalled(context: Context): Boolean = com.dotrino.sdk.ui.DotrinoApps.isInstalled(context, PACKAGE)
 
         /**

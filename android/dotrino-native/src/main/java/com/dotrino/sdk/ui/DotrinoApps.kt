@@ -31,6 +31,16 @@ object DotrinoApps {
         context.packageManager.getPackageInfo(pkg, 0); true
     } catch (_: PackageManager.NameNotFoundException) { false }
 
+    /**
+     * RESTART the app (changing profile is not reactive, as on the web: everything starts again
+     * with the new active one). The process ends so no engine keeps the old profile in memory.
+     */
+    fun restart(context: Context) {
+        val i = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+        context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        Runtime.getRuntime().exit(0)
+    }
+
     /** Its page in the Play app itself: Android apps go only through Play. */
     fun storeUri(pkg: String): Uri = Uri.parse("market://details?id=$pkg")
 

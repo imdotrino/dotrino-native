@@ -15,6 +15,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.dotrino.sdk.R
+import com.dotrino.sdk.IdentityClient
+import com.dotrino.sdk.PhoneProfiles
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The Dotrino bar for NATIVE screens: what `<dotrino-topbar>` is on the web (brand, ES/EN and
@@ -51,6 +56,7 @@ class DotrinoTopbar(
     onBrand: () -> Unit,
 ) {
     private val showProfile = showProfile
+    private val scope = kotlinx.coroutines.MainScope()
     data class Brand(val name: String, val icon: Int)
     /**
      * [name]: the profile's name. [key]: what its identicon is drawn from (the profile's key).
@@ -63,6 +69,11 @@ class DotrinoTopbar(
         val KOFI: Uri = Uri.parse("https://ko-fi.com/dotrino")
         val DISCORD: Uri = Uri.parse("https://discord.gg/D648uq7cth")
         const val HOME = "https://dotrino.com/"
+        // The same pages the web topbar's menu opens.
+        const val PROFILE_URL = "https://profile.dotrino.com/"
+        const val CREATE_URL = "https://profile.dotrino.com/create"
+        const val ADOPT_URL = "https://vault.dotrino.com/d"
+        const val LOGIN_URL = "https://profile.dotrino.com/login"
     }
 
     private val dp = activity.resources.displayMetrics.density
@@ -132,24 +143,62 @@ class DotrinoTopbar(
         }
     }
 
-    /** Where the profiles are managed on a phone: the Dotrino app (or Play, if it is missing). */
+    /**
+     * THE PROFILE MENU, like the web topbar's: this phone's profiles (avatar, name, the active one
+     * ticked) to switch, and «Open my profile», «Create profile», «Adopt a profile» and «Sign in»
+     * (or «Sign out» when the active one was entered with a password). Everything happens INSIDE
+     * this app: the profiles are the phone's (the identity app), and the pages open here with the
+     * same identity ([DotrinoWebActivity]). No other Dotrino app is needed (CONVENCIONES §16.2).
+     */
     private fun showProfile() {
         val sheet = DotrinoSheet(activity)
-        sheet.heading(profile?.name?.takeIf { it.isNotBlank() } ?: activity.getString(R.string.dotrino_profile_cta))
-        sheet.message(activity.getString(R.string.dotrino_profile_message))
-        sheet.button(activity.getString(R.string.dotrino_profile_open), filled = true) {
-            val app = "com.dotrino.app"
-            try {
-                if (DotrinoApps.isInstalled(activity, app)) {
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://profile.dotrino.com/")).setPackage(app))
-                } else activity.startActivity(Intent(Intent.ACTION_VIEW, DotrinoApps.storeUri(app)))
-                sheet.dialog.dismiss()
-            } catch (_: android.content.ActivityNotFoundException) {
-                sheet.message(activity.getString(R.string.dotrino_apps_no_store))
-            }
+        sheet.heading(activity.getString(R.string.dotrino_profiles))
+        val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        sheet.column.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val links = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        sheet.column.addView(links, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        fun link(label: String, url: String) = links.addView(TextView(activity).apply {
+            text = label; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(color(R.color.dotrino_fg))
+            setPadding(px(4), px(12), px(4), px(12)); tag = "profile-link"
+            setOnClickListener { sheet.dialog.dismiss(); DotrinoWebActivity.open(activity, url) }
+        })
+        fun renderLinks(signedIn: Boolean) {
+            links.removeAllViews()
+            link(activity.getString(R.string.dotrino_profile_open_mine), PROFILE_URL)
+            link("＋ " + activity.getString(R.string.dotrino_profile_new), CREATE_URL)
+            link("↧ " + activity.getString(R.string.dotrino_profile_adopt), ADOPT_URL)
+            // «Sign out» of an account entered with a password is done on its page (it releases
+            // the place in the vault); «Sign in» opens the login page.
+            if (signedIn) link("⇥ " + activity.getString(R.string.dotrino_profile_logout), PROFILE_URL)
+            else link("⇤ " + activity.getString(R.string.dotrino_profile_login), LOGIN_URL)
         }
+        renderLinks(false)
         sheet.button(activity.getString(R.string.dotrino_support_close)) { sheet.dialog.dismiss() }
         sheet.show()
+        scope.launch {
+            val entries = runCatching { withContext(Dispatchers.IO) { PhoneProfiles.load(IdentityClient.shared(activity)) } }.getOrNull() ?: return@launch
+            renderLinks(entries.any { it.current && it.login != null })
+            for (e in entries) list.addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(px(4), px(8), px(4), px(8)); tag = "profile-" + e.id
+                addView(DotrinoAvatarView(activity, e.seed, e.avatar), LinearLayout.LayoutParams(px(36), px(36)))
+                addView(TextView(activity).apply {
+                    text = (e.name ?: activity.getString(R.string.dotrino_profile_unnamed)) + (e.login?.let { "\n$it" } ?: "")
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(color(R.color.dotrino_fg)); setPadding(px(12), 0, 0, 0)
+                    if (e.current) setTypeface(typeface, Typeface.BOLD)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (e.current) addView(TextView(activity).apply { text = "✓"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setTextColor(color(R.color.dotrino_accent)) })
+                else setOnClickListener {
+                    isEnabled = false
+                    scope.launch {
+                        val ok = runCatching { withContext(Dispatchers.IO) { PhoneProfiles.switchTo(IdentityClient.shared(activity), e.id) } }.isSuccess
+                        if (ok) DotrinoApps.restart(activity) else isEnabled = true
+                    }
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            list.addView(android.view.View(activity).apply { setBackgroundColor(color(R.color.dotrino_muted)); alpha = 0.3f },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(1)).apply { topMargin = px(6); bottomMargin = px(6) })
+        }
     }
 
     /** The TWO options always in sight, the active one highlighted (CONVENCIONES §9). */
