@@ -15,6 +15,13 @@ import android.media.MediaPlayer
  * trino lo toca [play] al mostrar el aviso. Eso cubre también lo que no pasa por el sistema:
  * con la app abierta un pedido o un mensaje entra directo por la conexión, no llega ningún
  * aviso de Google, y es la app la que tiene que sonar.
+ *
+ * LOS SONIDOS SON LOS ORIGINALES (`sound/trinos/trino-0N.wav` en la raíz del ecosistema), ya con
+ * su volumen. Aquí y en iOS solo se CAMBIA EL FORMATO, sin filtros ni ganancia (dueño,
+ * 2026-09-30: si hay que subirlos, se editan los originales):
+ *
+ *     ffmpeg -i trino-0N.wav -c:a libvorbis -q:a 6 dotrino_ring_N.ogg     # Android
+ *     ffmpeg -i trino-0N.wav -c:a adpcm_ima_qt -f caf dotrino-ring-N.caf  # iOS
  */
 object DotrinoRing {
     private val SOUNDS = intArrayOf(
