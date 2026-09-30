@@ -54,3 +54,22 @@ final class AvatarTests: XCTestCase {
         }
     }
 }
+
+/// Los perfiles del teléfono, leídos del almacén de la identidad como los lista la web (igual que PhoneProfilesTest.kt).
+final class PhoneProfilesTests: XCTestCase {
+    func testListsThePhonesProfilesLikeTheWeb() {
+        let items = [
+            "kv:dotrino.identity.current": "p2",
+            "kv:dotrino.identity.profiles": #"[{"id":"p1","name":"Casa","pubkey":"K1"},{"id":"p2","name":"","pubkey":"K2","login":{"address":"ana@AB12-CD34-EF56"}},{"id":"p3","name":"Sin me","pubkey":"K3"}]"#,
+            "kv:dotrino.identity.p.p2.me": #"{"nickname":"Ana","avatar":"data:image/png;base64,AAAA"}"#,
+            "kv:dotrino.identity.p.p1.me": #"{"avatar":"https://no-es-un-data-uri"}"#,
+        ]
+        let l = PhoneProfiles.list(items)
+        XCTAssertEqual(l.map(\.id), ["p1", "p2", "p3"])
+        XCTAssertEqual(l[0].name, "Casa"); XCTAssertNil(l[0].avatar)
+        XCTAssertEqual(l[1].name, "Ana"); XCTAssertTrue(l[1].current); XCTAssertEqual(l[1].login, "ana@AB12-CD34-EF56")
+        XCTAssertEqual(l[1].seed, "K2"); XCTAssertEqual(l[1].avatar, "data:image/png;base64,AAAA")
+        XCTAssertEqual(l.map(\.current), [false, true, false])
+        XCTAssertTrue(PhoneProfiles.list([:]).isEmpty)
+    }
+}
