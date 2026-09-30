@@ -47,6 +47,20 @@ class IdentityClient(context: Context) {
         const val GONE = "identity-gone"
         private val json = Json { ignoreUnknownKeys = true }
 
+        /**
+         * THE ANSWER IN PIECES. Android passes at most ~1 MB between apps per message, and a
+         * String travels as UTF-16 (two bytes a character): the identity's store with a profile
+         * photo passed it and the call failed. An answer longer than [PART] characters goes in
+         * several messages, `{ rid, part, parts, json }`, and [raw] puts them back together.
+         */
+        const val PART = IdentityWire.PART
+        const val KEY_RID = "rid"; const val KEY_PART = "part"; const val KEY_PARTS = "parts"
+        fun split(text: String): List<String> = IdentityWire.split(text)
+        fun partBundle(rid: String, part: Int, parts: Int, text: String) = Bundle().apply {
+            putString(KEY, text)
+            if (parts > 1) { putString(KEY_RID, rid); putInt(KEY_PART, part); putInt(KEY_PARTS, parts) }
+        }
+
         fun isInstalled(context: Context): Boolean = com.dotrino.sdk.ui.DotrinoApps.isInstalled(context, PACKAGE)
 
         /**
@@ -58,12 +72,33 @@ class IdentityClient(context: Context) {
 
     class IdentityError(message: String, val code: String) : Exception(message)
 
+    /**
+     * Puts split messages back together: feed it each Bundle; it gives the whole text when
+     * the last piece arrives (or at once, for a message that came whole). Not thread-safe:
+     * one per Handler thread.
+     */
+    class Joiner {
+        private val partial = HashMap<String, Array<String?>>()
+        fun feed(data: Bundle?): String? {
+            val text = data?.getString(KEY) ?: return null
+            val rid = data.getString(KEY_RID) ?: return text
+            val got = partial.getOrPut(rid) { arrayOfNulls(data.getInt(KEY_PARTS)) }
+            data.getInt(KEY_PART).takeIf { it in got.indices }?.let { got[it] = text }
+            if (got.any { it == null }) return null
+            partial.remove(rid); return got.joinToString("")
+        }
+        fun drop(rid: String) { partial.remove(rid) }
+    }
+
     private val app = context.applicationContext
     private val thread = HandlerThread("dotrino-identity-client").apply { start() }
     private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonObject>>()
     private val nextId = AtomicInteger(1)
+    // Answers that come split (only touched on [thread]).
+    private val joiner = Joiner()
     private val replies = Messenger(Handler(thread.looper) { msg ->
-        val o = msg.data?.getString(KEY)?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        val whole = joiner.feed(msg.data)
+        val o = whole?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
         val id = o?.get("id")?.jsonPrimitive?.content
         if (o != null && id != null) pending.remove(id)?.complete(o)
         true
@@ -118,11 +153,13 @@ class IdentityClient(context: Context) {
         pending[id] = d
         try {
             val req = JsonObject(mapOf("id" to JsonPrimitive(id), "method" to JsonPrimitive(method), "params" to params))
-            m.send(Message.obtain(null, MSG_CALL).apply { data = Bundle().apply { putString(KEY, req.toString()) }; replyTo = replies })
+            // A large request (a photo in `storeSet`) goes in pieces too.
+            val parts = split(req.toString())
+            parts.forEachIndexed { i, part -> m.send(Message.obtain(null, MSG_CALL).apply { data = partBundle(id, i, parts.size, part); replyTo = replies }) }
             return withTimeout(timeoutMs) { d.await() }
         } catch (e: TimeoutCancellationException) {
             throw IdentityError("the identity app did not answer $method", "identity-no-reply")
-        } finally { pending.remove(id) }
+        } finally { pending.remove(id); Handler(thread.looper).post { joiner.drop(id) } }
     }
 
     /** The `result`, or the error the identity app gave, with its code. */
@@ -137,4 +174,10 @@ class IdentityClient(context: Context) {
         gone("closed")
         thread.quitSafely()
     }
+}
+
+/** The split, without Android: so it is tested on the JVM. */
+object IdentityWire {
+    const val PART = 100_000
+    fun split(text: String): List<String> = if (text.length <= PART) listOf(text) else text.chunked(PART)
 }

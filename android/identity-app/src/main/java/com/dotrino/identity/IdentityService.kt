@@ -35,13 +35,15 @@ class IdentityService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
     private lateinit var host: IdentityHost
+    private val joiner = IdentityClient.Joiner()   // only touched on [thread]
 
     private val messenger by lazy {
         Messenger(Handler(thread.looper) { msg ->
             if (msg.what != IdentityClient.MSG_CALL) return@Handler false
             // The Message is recycled when this returns: keep what is needed now.
             val replyTo = msg.replyTo ?: return@Handler true
-            val text = msg.data?.getString(IdentityClient.KEY) ?: return@Handler true
+            // A large request arrives in pieces: it is answered when the last one is in.
+            val text = joiner.feed(msg.data) ?: return@Handler true
             scope.launch { answer(text, replyTo) }
             true
         })
@@ -64,9 +66,15 @@ class IdentityService : Service() {
                 put("code", (e as? IdentityHost.HostError)?.code ?: "native-error")
             }
         }
+        // IN PIECES: Android cannot pass more than ~1 MB between apps in one go (the identity's
+        // store with a profile photo and a few profiles passed it: FAILED BINDER TRANSACTION, and
+        // the pages were left without a profile). `IdentityClient` puts the pieces back together.
+        val parts = IdentityClient.split(out.toString())
         runCatching {
-            replyTo.send(Message.obtain(null, IdentityClient.MSG_CALL).apply { data = Bundle().apply { putString(IdentityClient.KEY, out.toString()) } })
-        }.onFailure { Log.w(TAG, "could not answer $method: the caller went away") }
+            parts.forEachIndexed { i, part ->
+                replyTo.send(Message.obtain(null, IdentityClient.MSG_CALL).apply { data = IdentityClient.partBundle(id, i, parts.size, part) })
+            }
+        }.onFailure { Log.w(TAG, "could not answer $method: ${it.message}") }
     }
 
     override fun onDestroy() { scope.cancel(); thread.quitSafely(); super.onDestroy() }
