@@ -224,16 +224,18 @@ class SealedSession(
      * of the person (theirs + their card). Empty = the one their identity announced, found
      * through the greeting of that token.
      */
-    suspend fun sendSealedTo(token: String, payload: JsonObject, recipientEncPubs: List<String> = emptyList()) {
+    suspend fun sendSealedTo(token: String, payload: JsonObject, recipientEncPubs: List<String> = emptyList(), peerPubkey: String? = null) {
         val c = live()
+        val pk = peerPubkey ?: c.pubkeyOfToken(token)
         val keys = recipientEncPubs.ifEmpty {
-            val pk = c.pubkeyOfToken(token) ?: throw SessionError("nobody has said whose this token is — greet it first", "no-peer-identity")
-            listOf(c.encPubOf(pk))
+            listOf(c.encPubOf(pk ?: throw SessionError("nobody has said whose this token is — greet it first", "no-peer-identity")))
         }
         val sealed = sealing.seal(payload, keys)
         val d = direct
         if (d != null && d.send(token, sealed.toString())) return
-        c.sendTo(listOf(token), sealed)
+        // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
+        if (pk != null) c.sendToOrElse(token, sealed) { c.sendByPubkey(pk, sealed) }
+        else c.sendTo(listOf(token), sealed)
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
     }

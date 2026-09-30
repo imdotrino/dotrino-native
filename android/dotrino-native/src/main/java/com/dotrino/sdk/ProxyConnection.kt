@@ -152,6 +152,16 @@ class ProxyConnection(private val url: String) {
             }
             "joined" -> emit(Event.Joined(o["channel"]?.jsonPrimitive?.content ?: return, o["token"]?.jsonPrimitive?.content ?: return))
             "left" -> emit(Event.Left(o["channel"]?.jsonPrimitive?.content ?: return, o["token"]?.jsonPrimitive?.content ?: return))
+            "message_sent" -> {
+                val w = id?.let { tokenWatch.remove(it) }
+                val failed = (o["failed"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+                if (w != null && w.first in failed) {
+                    tokenPubkeys.remove(w.first); helloSent.remove(w.first)
+                    emit(Event.PeerGone(w.first, null))
+                    runCatching { w.third() }
+                }
+                if (id != null) pending.remove(id)?.complete(o)
+            }
             "error" -> if (id != null) pending.remove(id)?.completeExceptionally(
                 ProxyError(o["error"]?.jsonPrimitive?.content ?: "proxy error", o["code"]?.jsonPrimitive?.content ?: "proxy-error"))
             else -> if (id != null) pending.remove(id)?.complete(o)
@@ -228,6 +238,30 @@ class ProxyConnection(private val url: String) {
             put("to", buildJsonArray { tokens.forEach { add(JsonPrimitive(it)) } })
             put("message", payload.toString())
         })
+    }
+
+    // What went to a token and waits to know if that token still exists (see [sendToOrElse]).
+    private val tokenWatch = java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, () -> Unit>>()
+
+    /**
+     * [sendTo] for ONE token, but a dead token does not swallow the message. A token is a
+     * connection: when the other side restarts its app it stops existing, and the proxy answers
+     * `message_sent` with it in `failed` (it only answers when something fails). Then [onGone]
+     * runs — the caller sends the same thing by pubkey, to the queue — and `PeerGone` is emitted
+     * so nobody keeps writing there. The same as `sendSealedTo` in `@dotrino/proxy-client` 0.26.
+     */
+    fun sendToOrElse(token: String, payload: JsonObject, onGone: () -> Unit) {
+        val now = System.currentTimeMillis()
+        tokenWatch.entries.removeIf { now - it.value.second > 15_000 }
+        val id = "msg_${nextId.getAndIncrement()}"
+        tokenWatch[id] = Triple(token, now, onGone)
+        try {
+            send(buildJsonObject {
+                put("to", buildJsonArray { add(JsonPrimitive(token)) })
+                put("message", payload.toString())
+                put("id", id)
+            })
+        } catch (e: Exception) { tokenWatch.remove(id); throw e }
     }
 
     /**
