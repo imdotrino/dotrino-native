@@ -34,4 +34,21 @@ object Acta {
 
     fun memberCan(acta: JsonObject?, pub: String, cap: String, extraRenounces: JsonArray = JsonArray(emptyList())) =
         cap in effectiveCaps(acta, pub, extraRenounces)
+
+    /** Records before this version named their sealer in a field, and it sealed WITHOUT the permission. */
+    private const val V_NO_SEALER_FIELD = 3
+
+    /**
+     * `sealersOf`: who may seal this profile's record — and so, whose papers count. The members
+     * with `sealer`; in an old record, also the one in its `sealer` field.
+     */
+    fun sealersOf(acta: JsonObject?, extraRenounces: JsonArray = JsonArray(emptyList())): List<String> {
+        if (acta == null) return emptyList()
+        val byCap = (acta["members"] as? JsonArray).orEmpty()
+            .mapNotNull { ((it as? JsonObject)?.get("pub") as? JsonPrimitive)?.content }
+            .filter { memberCan(acta, it, "sealer", extraRenounces) }
+        val v = (acta["v"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+        val field = (acta["sealer"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        return if (v != null && v < V_NO_SEALER_FIELD && field != null && field !in byCap) listOf(field) + byCap else byCap
+    }
 }

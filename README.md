@@ -44,6 +44,17 @@ en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`). La p
 con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `ActaE2eTest`): con
 `sign` el perfil emite y el espectador lo verifica; tras quitarle `sign`, `needs-vault-signer`.
 
+**Hablar con tus otros aparatos** (lo que usa la terminal nativa, y cualquier app que maneje un
+agente — terminal, IA — corriendo en otra máquina de la cuenta):
+
+| Pieza | Qué es | Original en JS |
+|---|---|---|
+| `RemoteAgent` (**solo Android por ahora**) | el lado del CLIENTE de un agente remoto: `probe` (quién está encendido y qué es, sin encolar ni timbrar), `open` (saludo firmado con el papel del perfil; el ack del agente se juzga contra el acta: lo emitió una selladora y no nombra un acta más nueva) y la `Session` (canal por sesión ECDH P-256 → HKDF → AES-GCM; el proxio solo ve `{ type, sid, env }`) | `@dotrino/remote-agent` `client.js`, `e2e.js`, `discover.js` |
+| `Acta.sealersOf` | quién puede sellar el acta (y por tanto de quién valen los papeles) | `vault/acta.js` `sealersOf` |
+
+Comprobado contra un vector que sella el propio JS (`Tests/…/Resources/remote-agent.json` +
+`RemoteAgentTest`). Falta el puerto a Swift.
+
 **Hablar con otras personas** (lo que usa el messenger nativo, y cualquier app que mande algo
 del usuario por mensaje dirigido — CONVENCIONES §4.1):
 

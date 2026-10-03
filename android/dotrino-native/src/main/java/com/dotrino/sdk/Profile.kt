@@ -28,7 +28,8 @@ class Profile private constructor(
     val publickey: String,
     /** My encryption key (JWK string): what others seal to. */
     val encPub: String,
-    private val acta: JsonObject?,
+    /** The profile record as the identity stores it. Internal: the library judges with it (RemoteAgent), apps ask what a member may do. */
+    internal val acta: JsonObject?,
     private val renounces: JsonArray,
     private val keys: DeviceKeys,
     /** The id of this profile in the identity's store (`dotrino.identity.current`); null for a profile made in hand. */

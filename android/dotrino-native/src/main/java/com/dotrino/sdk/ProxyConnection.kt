@@ -380,11 +380,13 @@ class ProxyConnection(private val url: String, val app: String? = null) {
      * sends it. [quiet]: it is queued the same, but the proxy does not ring their phone —
      * for what can wait until they open the app (presence, an ack).
      */
-    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null) {
+    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) {
         send(buildJsonObject {
             put("to_publickey", buildJsonArray { add(JsonPrimitive(to)) })
             put("message", payload.toString())
             if (quiet) put("quiet", true)
+            // REAL TIME only: if they are not connected it is neither queued nor rung (a presence probe).
+            if (ephemeral) put("ephemeral", true)
             // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
             if (toApp != null) put("app", toApp)
         })
