@@ -53,7 +53,9 @@ agente — terminal, IA — corriendo en otra máquina de la cuenta):
 | `Acta.sealersOf` | quién puede sellar el acta (y por tanto de quién valen los papeles) | `vault/acta.js` `sealersOf` |
 
 Comprobado contra un vector que sella el propio JS (`Tests/…/Resources/remote-agent.json` +
-`RemoteAgentTest`). Falta el puerto a Swift.
+`RemoteAgentTest`) y de punta a punta contra un agente de terminal REAL enrolado en una bóveda
+desechable (`test-vectors/e2e-remote-agent.mjs` + `RemoteAgentE2eTest`: lo encuentra, hace el
+saludo, abre una consola y ejecuta un comando). Falta el puerto a Swift.
 
 **Hablar con otras personas** (lo que usa el messenger nativo, y cualquier app que mande algo
 del usuario por mensaje dirigido — CONVENCIONES §4.1):
