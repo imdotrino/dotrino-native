@@ -62,6 +62,27 @@ se empareja por su cuenta: dos caminos para lo mismo es lo que la regla de simpl
 2. **iOS — equipo y grupos.** Toda app en el equipo `P7G853375S`, con el Keychain Access
    Group y el App Group de arriba en sus entitlements.
 
+### 2.4 El navegador NO es parte de esto, en ninguna dirección
+
+Lo compartido es **entre apps nativas**. El navegador del mismo teléfono queda fuera, y no
+hay forma de meterlo:
+
+- **Chrome (Android)** no puede enlazar el servicio de `com.dotrino.identity`: exige el
+  permiso de firma, y Chrome no está firmado con nuestra llave. Una PWA o una TWA corren
+  dentro de Chrome, así que tampoco.
+- **Safari (iOS)** no entra en el llavero ni en el App Group del equipo `P7G853375S`.
+- **Ninguna app nativa** puede leer el almacén de `id.dotrino.com` que guarda un navegador.
+- **El WebView de una app nativa no es el navegador**: su iframe `id.dotrino.com` guarda en
+  lo nativo por el puente (`IdentityWebBridge`), no en Chrome ni en Safari.
+
+Así que en un teléfono hay **dos aparatos del acta**: el navegador y el conjunto de apps
+nativas. Los perfiles de uno no aparecen en el otro. Se juntan como cualquier par de
+aparatos: emparejando con la bóveda («Adoptar un perfil», `vault.dotrino.com/d`) o
+entrando con dirección y contraseña. **No se construye un puente** que copie perfiles entre
+los dos (un `intent://` de vuelta o similar): sería un segundo camino para lo mismo, y la
+bóveda ya lo resuelve. Explicado para el usuario en el wiki
+(`wiki.dotrino.com/empezar/navegador-y-apps/`) y en la portada `id.dotrino.com`.
+
 ## 3. Cómo lo consume una app
 
 - **iOS**: Swift Package por URL de git con versión (`https://github.com/imdotrino/dotrino-native`).
