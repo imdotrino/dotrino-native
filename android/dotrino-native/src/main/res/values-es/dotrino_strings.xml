@@ -48,4 +48,6 @@
     <string name="dotrino_net_path_direct">directo</string>
     <string name="dotrino_net_path_turn">TURN</string>
     <string name="dotrino_net_path_webrtc">WebRTC</string>
+    <string name="dotrino_presence_title">Confirma que eres tú</string>
+    <string name="dotrino_presence_unavailable">Este teléfono no tiene bloqueo de pantalla. Ponle uno (huella, cara o código) en los ajustes y vuelve a intentarlo.</string>
 </resources>

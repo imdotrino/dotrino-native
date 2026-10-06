@@ -34,3 +34,4 @@
 "dotrino_net_path_direct" = "directo";
 "dotrino_net_path_turn" = "TURN";
 "dotrino_net_path_webrtc" = "WebRTC";
+"dotrino_presence_unavailable" = "Este teléfono no tiene código de bloqueo. Ponle uno en los ajustes y vuelve a intentarlo.";

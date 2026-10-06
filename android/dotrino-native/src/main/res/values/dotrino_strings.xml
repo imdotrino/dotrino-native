@@ -48,4 +48,6 @@
     <string name="dotrino_net_path_direct">direct</string>
     <string name="dotrino_net_path_turn">TURN</string>
     <string name="dotrino_net_path_webrtc">WebRTC</string>
+    <string name="dotrino_presence_title">Confirm it\'s you</string>
+    <string name="dotrino_presence_unavailable">This phone has no screen lock. Set one (fingerprint, face or code) in its settings and try again.</string>
 </resources>

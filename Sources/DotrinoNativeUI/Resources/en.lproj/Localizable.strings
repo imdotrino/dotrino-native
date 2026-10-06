@@ -34,3 +34,4 @@
 "dotrino_net_path_direct" = "direct";
 "dotrino_net_path_turn" = "TURN";
 "dotrino_net_path_webrtc" = "WebRTC";
+"dotrino_presence_unavailable" = "This phone has no passcode. Set one in its settings and try again.";
