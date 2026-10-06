@@ -105,6 +105,15 @@ public enum RemoteAgent {
 
     // MARK: a session
 
+    /// An agent error as ONE session sees it. One that names another session (`sid`) is not for
+    /// it: the tabs of a phone share one connection, and each one used to take every error as its
+    /// own. The agent's `code` travels (`unknown-session`: it restarted and no longer knows this
+    /// session, remote-agent ≥ 0.14.0); an agent that sends none gives `agent-error`, as before.
+    static func sessionError(_ p: JSON, sid: String) -> RemoteAgentError? {
+        if let other = p["sid"]?.string, other != sid { return nil }
+        return RemoteAgentError(p["error"]?.string ?? "agent error", code: p["code"]?.string ?? "agent-error")
+    }
+
     /// Open a session with the agent at [agentPubkey] over [conn] (connected and identified as
     /// the profile). Throws [RemoteAgentError]: `no-vault`, `no-reply`, `refused` (the agent said
     /// no), `not-mine` (the ack does not hold against the record, with the reason), `bad-ack`.
@@ -170,9 +179,9 @@ public enum RemoteAgent {
                     // What does not open with this session's key is not for it: dropped, like the JS does.
                     guard let msg = try? RemoteAgent.open(key, env) else { return }
                     for l in self.lock.withLock({ Array(self.listeners.values) }) { l(msg) }
-                // The agent no longer knows this session (it restarted, or it expired).
+                // The agent no longer knows this session (it restarted, or it expired), or another error.
                 case RemoteAgent.errorType:
-                    let e = RemoteAgentError(m.payload["error"]?.string ?? "agent error", code: "agent-error")
+                    guard let e = RemoteAgent.sessionError(m.payload, sid: sid) else { return }
                     for l in self.lock.withLock({ Array(self.errors.values) }) { l(e) }
                 default: break
                 }

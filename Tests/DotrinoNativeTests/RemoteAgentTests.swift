@@ -57,4 +57,14 @@ final class RemoteAgentTests: XCTestCase {
         let (acta3, cert3, ack3) = try world(sealer, agent, stranger, seq: 40, actaSeq: 44)
         XCTAssertEqual(RemoteAgent.judge(ack3, try agent.sign(Canonical.stringify(ack3)), cert3, acta3), "untrusted-issuer")
     }
+
+    // The tabs of a phone share one connection: an error that names ANOTHER session is not mine.
+    func testAnErrorIsForTheSessionItNames() {
+        let mine: JSON = ["type": .string(RemoteAgent.errorType), "code": "unknown-session", "sid": "a", "error": "sesión desconocida o expirada"]
+        XCTAssertEqual(RemoteAgent.sessionError(mine, sid: "a")?.code, "unknown-session")
+        XCTAssertNil(RemoteAgent.sessionError(mine, sid: "b"))
+        // An agent older than remote-agent 0.14.0 sends neither code nor sid: still mine, as before.
+        let old: JSON = ["type": .string(RemoteAgent.errorType), "error": "sesión desconocida o expirada"]
+        XCTAssertEqual(RemoteAgent.sessionError(old, sid: "a")?.code, "agent-error")
+    }
 }

@@ -86,4 +86,15 @@ class RemoteAgentTest {
         val (acta3, cert3, ack3) = world(sealer, agent, stranger, seq = 40, actaSeq = 44)
         assertEquals("untrusted-issuer", RemoteAgent.judge(ack3, agent.sign(Canonical.stringify(ack3)), cert3, acta3))
     }
+
+    // The tabs of a phone share one connection: an error that names ANOTHER session is not mine.
+    @Test fun anErrorIsForTheSessionItNames() {
+        val mine = buildJsonObject { put("type", RemoteAgent.ERROR); put("code", "unknown-session"); put("sid", "a"); put("error", "sesión desconocida o expirada") }
+        val e = RemoteAgent.sessionError(mine, "a")!!
+        assertEquals("unknown-session", e.code)
+        assertNull(RemoteAgent.sessionError(mine, "b"))
+        // An agent older than remote-agent 0.14.0 sends neither code nor sid: still mine, as before.
+        val old = buildJsonObject { put("type", RemoteAgent.ERROR); put("error", "sesión desconocida o expirada") }
+        assertEquals("agent-error", RemoteAgent.sessionError(old, "a")!!.code)
+    }
 }

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
@@ -211,6 +212,18 @@ object RemoteAgent {
         return Session(conn, agentPubkey, sid, deriveKey(ephPriv, seph, sid))
     }
 
+    /**
+     * An agent error as ONE session sees it. One that names another session (`sid`) is not for
+     * it: the tabs of a phone share one connection, and each one used to take every error as its
+     * own. The agent's `code` travels (`unknown-session`: it restarted and no longer knows this
+     * session, remote-agent ≥ 0.14.0); an agent that sends none gives `agent-error`, as before.
+     */
+    internal fun sessionError(p: JsonObject, sid: String): RemoteAgentError? {
+        val other = p["sid"]?.jsonPrimitive?.contentOrNull
+        if (other != null && other != sid) return null
+        return RemoteAgentError(p["error"]?.jsonPrimitive?.contentOrNull ?: "agent error", p["code"]?.jsonPrimitive?.contentOrNull ?: "agent-error")
+    }
+
     /** An open session: domain payloads both ways, sealed with the session key. */
     class Session internal constructor(
         private val conn: ProxyConnection,
@@ -229,8 +242,8 @@ object RemoteAgent {
                     val msg = try { open(key, env) } catch (_: Exception) { return@onMessage }
                     listeners.forEach { it(msg) }
                 }
-                // The agent no longer knows this session (it restarted, or it expired).
-                ERROR -> errors.forEach { it(RemoteAgentError(p["error"]?.jsonPrimitive?.content ?: "agent error", "agent-error")) }
+                // The agent no longer knows this session (it restarted, or it expired), or another error.
+                ERROR -> sessionError(p, sid)?.let { e -> errors.forEach { it(e) } }
             }
         }
 
