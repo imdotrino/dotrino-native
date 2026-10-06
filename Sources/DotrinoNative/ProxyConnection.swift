@@ -106,8 +106,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// Dotrino app on a phone speaks with the same key, so the proxy needs to know which one to
     /// ring and whose queued messages to hand over. Routing, not content. `nil`: everything.
     public let app: String?
+    /// Where the traffic is counted. A session passes ONE for all its reconnections.
+    public let traffic: TrafficStats
 
-    public init(_ urlString: String, app: String? = nil) throws {
+    public init(_ urlString: String, app: String? = nil, traffic: TrafficStats = TrafficStats()) throws {
+        self.traffic = traffic
         guard let u = URL(string: urlString) else { throw ProxyError("invalid proxy url", code: "bad-url") }
         if let app, app.range(of: "^[a-z0-9][a-z0-9-]{0,31}$", options: .regularExpression) == nil {
             throw ProxyError("app: \"\(app)\" is not a valid app name", code: "bad-app")
@@ -196,6 +199,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     }
 
     private func handle(_ text: String) {
+        traffic.frame(incoming: true, bytes: utf8Length(text))
         guard let o = try? JSON.parse(text), o.object != nil else { return }
         let type = o["type"]?.string
         let id = o["id"]?.string
@@ -216,6 +220,10 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             default: payload = nil
             }
             guard let payload else { return }
+            let from = o["from"]?.string
+            let fromPk = o["from_publickey"]?.string ?? from.flatMap { f in lock.withLock { tokenPubkeys[f] } }
+            traffic.peer(incoming: true, path: "proxy", token: from, pubkey: fromPk,
+                         bytes: utf8Length(o["message"]?.string ?? o["message"]?.text ?? ""))
             // The greeting is the transport's: answered here, it never reaches the app.
             if payload["t"]?.string == Self.helloTag {
                 if let from = o["from"]?.string { onHello(from, payload) }
@@ -260,7 +268,22 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     private func send(_ frame: JSON) throws {
         if let c = closed { throw ProxyError(c, code: "disconnected") }
         guard let t = ws else { throw ProxyError("not connected", code: "disconnected") }
-        t.send(.string(frame.text)) { [weak self] e in if let e { self?.die("send: \(e.localizedDescription)") } }
+        let text = frame.text
+        t.send(.string(text)) { [weak self] e in if let e { self?.die("send: \(e.localizedDescription)") } }
+        countOut(frame, text)
+    }
+
+    /// Counts a frame that left through the proxy, and whom it was for.
+    private func countOut(_ frame: JSON, _ text: String) {
+        traffic.frame(incoming: false, bytes: utf8Length(text))
+        guard let msg = frame["message"]?.string else { return }
+        let n = utf8Length(msg)
+        for t in frame["to"]?.array?.compactMap(\.string) ?? [] {
+            traffic.peer(incoming: false, path: "proxy", token: t, pubkey: lock.withLock { tokenPubkeys[t] }, bytes: n)
+        }
+        for k in frame["to_publickey"]?.array?.compactMap(\.string) ?? [] {
+            traffic.peer(incoming: false, path: "proxy", token: nil, pubkey: k, bytes: n)
+        }
     }
 
     /// A request with an `id` whose answer comes back with the same `id`.

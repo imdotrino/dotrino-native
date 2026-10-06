@@ -27,6 +27,8 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
         var pc: RTCPeerConnection?
         var dc: RTCDataChannel?
         var makingOffer = false, ignoreOffer = false, negotiating = false, failed = false
+        /// `direct` or `turn`, from the candidate pair ICE chose; nil = not known yet.
+        var route: String?
         var pending: [RTCIceCandidate] = []
         init(_ remote: String) { self.remote = remote }
     }
@@ -50,6 +52,20 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     private func polite(_ p: Peer) -> Bool { selfToken().map { $0 < p.remote } ?? false }
 
     public func isOpen(_ token: String) -> Bool { peerIfAny(token)?.dc?.readyState == .open }
+
+    public func route(_ token: String) -> String? {
+        guard let p = peerIfAny(token) else { return nil }
+        if p.dc?.readyState == .open { probe(p); return peersLock.withLock { p.route } ?? "webrtc" }
+        return p.failed ? "failed" : p.negotiating ? "connecting" : nil
+    }
+
+    /// Asks ICE which pair it chose and notes it in `route` (the answer comes later).
+    private func probe(_ p: Peer) {
+        p.pc?.statistics { report in
+            let r = routeOf(report.statistics.mapValues { (type: $0.type, values: $0.values) })
+            if let r { self.peersLock.withLock { p.route = r } }
+        }
+    }
 
     public func send(_ token: String, _ text: String) -> Bool {
         guard let dc = peerIfAny(token)?.dc, dc.readyState == .open else { return false }
@@ -173,7 +189,7 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
 
     fileprivate func dcState(_ p: Peer, _ dc: RTCDataChannel) {
         switch dc.readyState {
-        case .open: onOpen(p.remote)
+        case .open: probe(p); onOpen(p.remote)
         // A channel that closes is tried again with the next message (JS: webrtc_close).
         case .closed: q.async {
             if self.peerIfAny(p.remote) === p { _ = self.peersLock.withLock { self.peers.removeValue(forKey: p.remote) }; p.pc?.close() }
@@ -214,4 +230,23 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
         func dataChannelDidChangeState(_ dc: RTCDataChannel) { owner?.dcState(peer, dc) }
         func dataChannel(_ dc: RTCDataChannel, didReceiveMessageWith b: RTCDataBuffer) { owner?.dcMessage(peer, b) }
     }
+}
+
+/// BY WHICH ROAD a peer connection goes: `turn` if either end of the candidate pair ICE chose is a
+/// `relay`, `direct` otherwise; nil when there is no chosen pair yet (not guessed). Same rule as
+/// `routeOf` in `@dotrino/proxy-client` and `WebRtcDirect.kt`.
+func routeOf(_ stats: [String: (type: String, values: [String: NSObject])]) -> String? {
+    func v(_ s: (type: String, values: [String: NSObject])?, _ k: String) -> NSObject? { s?.values[k] }
+    func str(_ o: NSObject?) -> String? { (o as? NSString).map { $0 as String } }
+    func bool(_ o: NSObject?) -> Bool { (o as? NSNumber)?.boolValue ?? false }
+    var pair = stats.values.first { $0.type == "transport" && v($0, "selectedCandidatePairId") != nil }
+        .flatMap { t in str(v(t, "selectedCandidatePairId")).flatMap { stats[$0] } }
+    if pair == nil {
+        pair = stats.values.first { $0.type == "candidate-pair" && (bool(v($0, "selected")) || (bool(v($0, "nominated")) && str(v($0, "state")) == "succeeded")) }
+    }
+    guard let pair else { return nil }
+    let local = str(v(pair, "localCandidateId")).flatMap { stats[$0] }
+    let remote = str(v(pair, "remoteCandidateId")).flatMap { stats[$0] }
+    if local == nil && remote == nil { return nil }
+    return str(v(local, "candidateType")) == "relay" || str(v(remote, "candidateType")) == "relay" ? "turn" : "direct"
 }

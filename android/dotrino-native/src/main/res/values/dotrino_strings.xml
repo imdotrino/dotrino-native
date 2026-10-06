@@ -29,4 +29,23 @@
     <string name="dotrino_profile_unnamed">Unnamed profile</string>
     <string name="dotrino_profiles_loading">Loading your profiles…</string>
     <string name="dotrino_profiles_error">Could not read your profiles (%1$s).</string>
+    <string name="dotrino_net_cta">Network stats</string>
+    <string name="dotrino_net_connected">Connected</string>
+    <string name="dotrino_net_disconnected">Disconnected</string>
+    <string name="dotrino_net_since">Since %1$s</string>
+    <string name="dotrino_net_all_proxy">Everything that went through the proxy</string>
+    <string name="dotrino_net_connections">Connections (%1$d)</string>
+    <string name="dotrino_net_none">No connections with other devices yet.</string>
+    <string name="dotrino_net_note">Content bytes, without network headers.</string>
+    <string name="dotrino_net_msgs">%1$d messages</string>
+    <string name="dotrino_net_route_proxy">Proxy</string>
+    <string name="dotrino_net_route_connecting">Proxy · negotiating WebRTC</string>
+    <string name="dotrino_net_route_failed">Proxy · WebRTC failed</string>
+    <string name="dotrino_net_route_direct">Direct WebRTC</string>
+    <string name="dotrino_net_route_turn">WebRTC via TURN</string>
+    <string name="dotrino_net_route_webrtc">WebRTC</string>
+    <string name="dotrino_net_path_proxy">proxy</string>
+    <string name="dotrino_net_path_direct">direct</string>
+    <string name="dotrino_net_path_turn">TURN</string>
+    <string name="dotrino_net_path_webrtc">WebRTC</string>
 </resources>

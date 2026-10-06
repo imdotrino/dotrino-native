@@ -35,7 +35,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * to subscribe got every ring and the first to connect drained everyone's queue. Routing, not
  * content. `null`: as before, everything.
  */
-class ProxyConnection(private val url: String, val app: String? = null) {
+class ProxyConnection(
+    private val url: String,
+    val app: String? = null,
+    /** Where the traffic is counted ([TrafficStats]). A session passes ONE for all its reconnections. */
+    val traffic: TrafficStats = TrafficStats(),
+) {
     init { require(app == null || Regex("^[a-z0-9][a-z0-9-]{0,31}$").matches(app)) { "app: \"$app\" is not a valid app name" } }
 
     companion object {
@@ -120,6 +125,7 @@ class ProxyConnection(private val url: String, val app: String? = null) {
     }
 
     private fun handle(text: String) {
+        traffic.frame(true, utf8Length(text))
         val o = try { json.parseToJsonElement(text) as? JsonObject } catch (_: Exception) { null } ?: return
         val type = o["type"]?.jsonPrimitive?.content
         val id = o["id"]?.jsonPrimitive?.content
@@ -140,6 +146,8 @@ class ProxyConnection(private val url: String, val app: String? = null) {
                     else -> null
                 } ?: return
                 val from = o["from"]?.jsonPrimitive?.content
+                traffic.peer(true, "proxy", from, o["from_publickey"]?.jsonPrimitive?.content ?: from?.let { tokenPubkeys[it] },
+                    utf8Length(if (raw is JsonPrimitive) raw.content else raw.toString()))
                 // The greeting is the transport's: it is answered here and never reaches the app.
                 if ((payload["t"] as? JsonPrimitive)?.content == HELLO_TAG) {
                     if (from != null) onHello(from, payload)
@@ -180,7 +188,23 @@ class ProxyConnection(private val url: String, val app: String? = null) {
     private fun send(frame: JsonObject) {
         closed?.let { throw ProxyError(it, "disconnected") }
         val w = ws ?: throw ProxyError("not connected", "disconnected")
-        if (!w.send(frame.toString())) throw ProxyError("could not send: socket closing", "disconnected")
+        val text = frame.toString()
+        if (!w.send(text)) throw ProxyError("could not send: socket closing", "disconnected")
+        countOut(frame, text)
+    }
+
+    /** Counts a frame that left through the proxy, and whom it was for. */
+    private fun countOut(frame: JsonObject, text: String) {
+        traffic.frame(false, utf8Length(text))
+        val msg = (frame["message"] as? JsonPrimitive)?.content ?: return
+        val n = utf8Length(msg)
+        (frame["to"] as? kotlinx.serialization.json.JsonArray)?.forEach { t ->
+            val tk = t.jsonPrimitive.content
+            traffic.peer(false, "proxy", tk, tokenPubkeys[tk], n)
+        }
+        (frame["to_publickey"] as? kotlinx.serialization.json.JsonArray)?.forEach { k ->
+            traffic.peer(false, "proxy", null, k.jsonPrimitive.content, n)
+        }
     }
 
     /** A request with an `id` whose answer comes back with the same `id`. */

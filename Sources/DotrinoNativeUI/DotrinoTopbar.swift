@@ -23,6 +23,9 @@ public struct DotrinoTopbar<Actions: View>: View {
     private let profile: Profile?
     @State private var support = false
     @State private var profileOpen = false
+    @State private var netOpen = false
+    /// The network button shows only when this app has a live transport (`DotrinoNetwork`).
+    @State private var hasNet = !DotrinoNetwork.sources().isEmpty
 
     /// The PROFILE BUTTON (CONVENCIONES §6.1): the active profile's initial and key. Nil = it
     /// still shows. On a phone the profiles are managed in the Dotrino app, with the phone's
@@ -65,6 +68,16 @@ public struct DotrinoTopbar<Actions: View>: View {
             .accessibilityIdentifier("topbar-brand")
             Spacer(minLength: 4)
             actions
+            if hasNet {
+                // THE NETWORK BUTTON, like the web topbar's: each connection, its traffic and its road.
+                Button { netOpen = true } label: {
+                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(DotrinoPalette.fg).frame(width: 32, height: 32)
+                        .overlay(Circle().stroke(DotrinoPalette.muted.opacity(0.4)))
+                }
+                .accessibilityLabel(lang.text("dotrino_net_cta", in: .module))
+                .accessibilityIdentifier("net-stats")
+            }
             // Las DOS opciones siempre a la vista, la activa resaltada (CONVENCIONES §9).
             HStack(spacing: 0) {
                 ForEach(["es", "en"], id: \.self) { l in
@@ -98,6 +111,10 @@ public struct DotrinoTopbar<Actions: View>: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(DotrinoPalette.card)
         .sheet(isPresented: $support) { SupportSheet(repo: repo, onClose: { support = false }) }
+        .sheet(isPresented: $netOpen) { NetSheet(onClose: { netOpen = false }) }
+        .onReceive(NotificationCenter.default.publisher(for: DotrinoNetwork.changed)) { _ in
+            hasNet = !DotrinoNetwork.sources().isEmpty
+        }
         .sheet(isPresented: $profileOpen) { profileMenu.presentationDetents([.medium, .large]) }
         .fullScreenCover(item: Binding(get: { webURL.map { WebTarget(url: $0) } }, set: { webURL = $0?.url })) { t in
             DotrinoWebSheet(url: t.url) { closeWeb() }
@@ -241,6 +258,110 @@ private struct SupportSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DotrinoPalette.bg.ignoresSafeArea())
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// THE NETWORK SHEET: each live transport (its proxy, whether it is connected, everything that went
+/// through it) and each connection with another device — by which road it goes now (proxy, direct
+/// WebRTC, WebRTC via TURN) and its bytes per road. Refreshed every second while open. Same as
+/// the Android sheet and the web topbar's modal.
+private struct NetSheet: View {
+    let onClose: () -> Void
+    @ObservedObject private var lang = DotrinoLang.shared
+    @State private var all: [NetworkStats] = []
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private func T(_ k: String) -> String { lang.text(k, in: .module) }
+    private func T(_ k: String, _ a: CVarArg) -> String { lang.text(k, in: .module, a) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(T("dotrino_net_cta")).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
+                    .frame(maxWidth: .infinity).padding(.bottom, 8)
+                if all.isEmpty { Text(T("dotrino_net_none")).foregroundColor(DotrinoPalette.muted) }
+                ForEach(Array(all.enumerated()), id: \.offset) { _, s in transport(s) }
+                Text(T("dotrino_net_note")).font(.caption).foregroundColor(DotrinoPalette.muted).padding(.top, 8)
+                Button(T("dotrino_support_close"), action: onClose).foregroundColor(DotrinoPalette.fg)
+                    .frame(maxWidth: .infinity).padding(.top, 12)
+            }
+            .padding(24)
+        }
+        .background(DotrinoPalette.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .onAppear(perform: refresh)
+        .onReceive(tick) { _ in refresh() }
+        .accessibilityIdentifier("net-sheet")
+    }
+
+    private func refresh() { all = DotrinoNetwork.sources().map { $0.networkStats() } }
+
+    @ViewBuilder private func transport(_ s: NetworkStats) -> some View {
+        let host = URL(string: s.url)?.host ?? s.url
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle().fill(s.connected ? Color.green : Color.red).frame(width: 9, height: 9)
+                Text("Proxy · \(host)").font(.headline).foregroundColor(DotrinoPalette.fg)
+            }
+            Text([T(s.connected ? "dotrino_net_connected" : "dotrino_net_disconnected"), s.app,
+                  T("dotrino_net_since", s.since.formatted(date: .omitted, time: .shortened))].compactMap { $0 }.joined(separator: " · "))
+                .font(.caption).foregroundColor(DotrinoPalette.muted)
+            HStack {
+                Text(T("dotrino_net_all_proxy")).font(.footnote).foregroundColor(DotrinoPalette.muted)
+                Spacer()
+                Text("↓ \(fmt(s.proxy.bytesIn))  ↑ \(fmt(s.proxy.bytesOut))").font(.footnote.monospacedDigit()).foregroundColor(DotrinoPalette.fg)
+            }
+            .padding(10).overlay(RoundedRectangle(cornerRadius: 9).stroke(DotrinoPalette.muted.opacity(0.4)))
+            Text(T("dotrino_net_connections", s.peers.count).uppercased()).font(.caption2).foregroundColor(DotrinoPalette.muted).padding(.top, 6)
+            if s.peers.isEmpty { Text(T("dotrino_net_none")).font(.footnote).foregroundColor(DotrinoPalette.muted) }
+            ForEach(s.peers) { p in peer(p) }
+        }
+        .accessibilityIdentifier("net-transport")
+    }
+
+    @ViewBuilder private func peer(_ p: NetworkStats.Peer) -> some View {
+        let who = p.pubkey ?? p.token ?? ""
+        HStack(alignment: .top, spacing: 10) {
+            Group {
+                if let k = p.pubkey { DotrinoAvatarView(seed: k, photo: nil) } else { Circle().fill(DotrinoPalette.muted) }
+            }.frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(who.count > 14 ? "\(who.prefix(6))…\(who.suffix(6))" : who).font(.caption.monospaced()).foregroundColor(DotrinoPalette.fg).lineLimit(1)
+                Text(T(routeKey(p.route))).font(.caption.weight(.semibold)).foregroundColor(routeColor(p.route))
+                    .accessibilityIdentifier("net-route-\(p.route)")
+                ForEach([("↓", p.bytesIn), ("↑", p.bytesOut)].compactMap { a, b in paths(b).map { "\(a) \($0)" } }, id: \.self) {
+                    Text($0).font(.caption2).foregroundColor(DotrinoPalette.muted)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("↓ \(fmt(p.bytesIn.total))").font(.caption.monospacedDigit())
+                Text("↑ \(fmt(p.bytesOut.total))").font(.caption.monospacedDigit())
+                Text(T("dotrino_net_msgs", p.msgsIn + p.msgsOut)).font(.caption2).foregroundColor(DotrinoPalette.muted)
+            }.foregroundColor(DotrinoPalette.fg)
+        }
+        .padding(.vertical, 6)
+        .accessibilityIdentifier("net-peer")
+    }
+
+    private func routeKey(_ r: String) -> String {
+        ["direct", "turn", "webrtc", "connecting", "failed"].contains(r) ? "dotrino_net_route_\(r)" : "dotrino_net_route_proxy"
+    }
+    private func routeColor(_ r: String) -> Color {
+        switch r {
+        case "direct": return .green
+        case "turn", "webrtc": return .blue
+        case "connecting", "failed": return .orange
+        default: return DotrinoPalette.muted
+        }
+    }
+    /// «proxy 1,1 KB · direct 190 B», only the roads that carried something.
+    private func paths(_ b: TrafficStats.ByPath) -> String? {
+        let parts = [("proxy", b.proxy), ("direct", b.direct), ("turn", b.turn), ("webrtc", b.webrtc)]
+            .filter { $0.1 > 0 }.map { "\(T("dotrino_net_path_\($0.0)")) \(fmt($0.1))" }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+    private func fmt(_ n: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: n, countStyle: .binary)
     }
 }
 

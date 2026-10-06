@@ -66,6 +66,8 @@ class WebRtcDirect(context: Context) : DirectTransport {
         var ignoreOffer = false
         var negotiating = false
         var failed = false
+        /** `direct` or `turn`, from the candidate pair ICE chose; null = not known yet. */
+        @Volatile var route: String? = null
         val pending = mutableListOf<IceCandidate>()
         val polite: Boolean get() = selfToken()?.let { it < remote } ?: false
     }
@@ -77,6 +79,18 @@ class WebRtcDirect(context: Context) : DirectTransport {
     override fun setIceServers(servers: List<DirectTransport.IceServer>) { if (servers.isNotEmpty()) exec.execute { iceServers = servers } }
 
     override fun isOpen(token: String): Boolean = peers[token]?.dc?.state() == DataChannel.State.OPEN
+
+    override fun route(token: String): String? {
+        val p = peers[token] ?: return null
+        if (p.dc?.state() == DataChannel.State.OPEN) { probe(p); return p.route ?: "webrtc" }
+        return when { p.failed -> "failed"; p.negotiating -> "connecting"; else -> null }
+    }
+
+    /** Asks ICE which pair it chose and notes it in [Peer.route] (the answer comes later). */
+    private fun probe(p: Peer) {
+        val pc = p.pc ?: return
+        runCatching { pc.getStats { report -> routeOf(report.statsMap)?.let { p.route = it } } }
+    }
 
     override fun send(token: String, text: String): Boolean {
         val dc = peers[token]?.dc ?: return false
@@ -198,7 +212,7 @@ class WebRtcDirect(context: Context) : DirectTransport {
             override fun onBufferedAmountChange(previous: Long) {}
             override fun onStateChange() {
                 when (dc.state()) {
-                    DataChannel.State.OPEN -> onOpen(p.remote)
+                    DataChannel.State.OPEN -> { probe(p); onOpen(p.remote) }
                     // A channel that closes is tried again with the next message (JS: webrtc_close).
                     DataChannel.State.CLOSED -> exec.execute { if (peers[p.remote] === p) { peers.remove(p.remote); runCatching { p.pc?.close() } } }
                     else -> {}
@@ -220,4 +234,23 @@ class WebRtcDirect(context: Context) : DirectTransport {
         override fun onCreateFailure(e: String) { onWarn("webrtc sdp: $e", null); onFail() }
         override fun onSetFailure(e: String) { onWarn("webrtc sdp: $e", null); onFail() }
     }
+}
+
+/**
+ * BY WHICH ROAD a peer connection goes: `turn` if either end of the candidate pair ICE chose is a
+ * `relay`, `direct` otherwise; null when there is no chosen pair yet (not guessed). Same rule as
+ * `routeOf` in `@dotrino/proxy-client`.
+ */
+internal fun routeOf(stats: Map<String, org.webrtc.RTCStats>): String? {
+    fun m(s: org.webrtc.RTCStats?, k: String) = s?.members?.get(k)
+    var pair = stats.values.firstOrNull { it.type == "transport" && m(it, "selectedCandidatePairId") != null }
+        ?.let { stats[m(it, "selectedCandidatePairId").toString()] }
+    if (pair == null) pair = stats.values.firstOrNull {
+        it.type == "candidate-pair" && (m(it, "selected") == true || (m(it, "nominated") == true && m(it, "state") == "succeeded"))
+    }
+    pair ?: return null
+    val local = stats[m(pair, "localCandidateId")?.toString()]
+    val remote = stats[m(pair, "remoteCandidateId")?.toString()]
+    if (local == null && remote == null) return null
+    return if (m(local, "candidateType") == "relay" || m(remote, "candidateType") == "relay") "turn" else "direct"
 }

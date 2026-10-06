@@ -61,6 +61,9 @@ class SealedSession(
     data class Status(val state: String, val url: String, val reason: String? = null)
 
     val sealing = IdentitySealing(profile, app)
+    /** The traffic of this session, across reconnections (the topbar shows it). */
+    private val traffic = TrafficStats()
+    private val statsSource = DotrinoNetwork.Source { networkStats() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var conn: ProxyConnection? = null
     @Volatile private var closed = false
@@ -104,6 +107,7 @@ class SealedSession(
             selfToken = { conn?.token },
             signalSend = { to, msg -> runCatching { conn?.sendTo(listOf(to), msg) } },
             deliver = { from, text ->
+                traffic.peer(true, d.route(from) ?: "webrtc", from, conn?.pubkeyOfToken(from), utf8Length(text))
                 val c = conn ?: return@bind
                 val payload = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return@bind
                 scope.launch { deliver(c, ProxyConnection.Incoming(from, null, payload)) }
@@ -129,12 +133,13 @@ class SealedSession(
     /** Starts the loop. Returns at once; [awaitOnline] waits for the first connection. */
     fun start() {
         if (loop != null) return
+        DotrinoNetwork.register(statsSource)
         loop = scope.launch {
             var fails = 0
             while (isActive && !closed) {
                 val u = url
                 setStatus(Status("connecting", u))
-                val c = ProxyConnection(u, app)   // this app, for rings and the queue
+                val c = ProxyConnection(u, app, traffic)   // this app, for rings and the queue
                 try {
                     c.connect()
                     c.onMessage { inc -> scope.launch { deliver(c, inc) } }
@@ -184,6 +189,7 @@ class SealedSession(
 
     fun close() {
         closed = true
+        DotrinoNetwork.unregister(statsSource)
         runCatching { direct?.closeAll() }
         runCatching { conn?.close() }
         loop?.cancel()
@@ -232,7 +238,11 @@ class SealedSession(
         }
         val sealed = sealing.seal(payload, keys)
         val d = direct
-        if (d != null && d.send(token, sealed.toString())) return
+        val text = sealed.toString()
+        if (d != null && d.send(token, text)) {
+            traffic.peer(false, d.route(token) ?: "webrtc", token, pk, utf8Length(text))
+            return
+        }
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
         if (pk != null) c.sendToOrElse(token, sealed) { c.sendByPubkey(pk, sealed, toApp = app) }
         else c.sendTo(listOf(token), sealed)
@@ -250,6 +260,17 @@ class SealedSession(
             val servers = c.turnCredentials(profile.publickey) { profile.signData(it) }
             if (servers.isNotEmpty()) d.setIceServers(servers + DEFAULT_STUN)
         } catch (e: Exception) { onWarn("could not get TURN credentials", e) }
+    }
+
+    /**
+     * NETWORK STATS: how much came in and went out, per connection, and by which road — what
+     * `stats()` of `@dotrino/proxy-client` gives. The topbar's network sheet reads it.
+     */
+    fun networkStats(): NetworkStats {
+        val c = conn
+        val d = direct
+        val (proxy, peers) = traffic.snapshot(routeOf = { t -> d?.route(t) }, pubkeyOf = { t -> c?.pubkeyOfToken(t) })
+        return NetworkStats(url, app, c?.node, c?.token, isOnline, traffic.since, proxy, peers)
     }
 
     /** Sealed, BY PUBKEY (the proxy's 24 h offline queue). [quiet]: queue without ringing. */

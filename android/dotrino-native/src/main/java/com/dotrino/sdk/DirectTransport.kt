@@ -31,6 +31,13 @@ interface DirectTransport {
     fun handleSignal(from: String, msg: JsonObject)
 
     fun isOpen(token: String): Boolean
+
+    /**
+     * Where [token] goes NOW, for the network stats: `direct` / `turn` (open channel, without or
+     * with a relay), `webrtc` (open, road not known yet), `connecting`, `failed`, or null (no
+     * channel: the proxy). Read from what ICE chose, never guessed.
+     */
+    fun route(token: String): String? = if (isOpen(token)) "webrtc" else null
     fun close(token: String)
     fun closeAll()
 

@@ -18,6 +18,14 @@ public protocol DirectTransport: AnyObject {
     func close(_ token: String)
     func closeAll()
     func setIceServers(_ servers: [IceServer])
+    /// Where `token` goes NOW, for the network stats: `direct` / `turn` (open channel, without or
+    /// with a relay), `webrtc` (open, road not known yet), `connecting`, `failed`, or nil (the
+    /// proxy). Read from what ICE chose, never guessed.
+    func route(_ token: String) -> String?
+}
+
+extension DirectTransport {
+    public func route(_ token: String) -> String? { isOpen(token) ? "webrtc" : nil }
 }
 
 public let rtcTag = "__cc_rtc__"

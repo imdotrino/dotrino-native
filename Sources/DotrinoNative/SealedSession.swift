@@ -5,7 +5,7 @@ import Foundation
 /// `SealedSession.kt`: reconnects, re-identifies and re-announces its key every time; moves to
 /// the next proxy after `failsBeforeFailover` failures; drops what arrives unsealed; delivers
 /// what arrives sealed with `senderEncPub`, the key that sealed it.
-public final class SealedSession: @unchecked Sendable {
+public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
     public static let failsBeforeFailover = 3
     private static let maxBackoff: TimeInterval = 30
 
@@ -37,6 +37,8 @@ public final class SealedSession: @unchecked Sendable {
     }
 
     public let sealing: IdentitySealing
+    /// The traffic of this session, across reconnections (the topbar shows it).
+    private let traffic = TrafficStats()
     private let urls: [String]
     private let profile: Profile
     private let app: String
@@ -86,8 +88,11 @@ public final class SealedSession: @unchecked Sendable {
                 guard let c = self?.lock.withLock({ self?.conn }) else { return }
                 try? c.sendTo([to], msg)
             },
-            deliver: { [weak self] from, text in
-                guard let self, let c = self.lock.withLock({ self.conn }), let payload = try? JSON.parse(text), payload.object != nil else { return }
+            deliver: { [weak self, weak d] from, text in
+                guard let self else { return }
+                self.traffic.peer(incoming: true, path: d?.route(from) ?? "webrtc", token: from,
+                                  pubkey: self.lock.withLock({ self.conn })?.pubkeyOfToken(from), bytes: utf8Length(text))
+                guard let c = self.lock.withLock({ self.conn }), let payload = try? JSON.parse(text), payload.object != nil else { return }
                 Task { await self.deliver(c, ProxyConnection.Incoming(from: from, fromPubkey: nil, payload: payload)) }
             })
     }
@@ -124,6 +129,7 @@ public final class SealedSession: @unchecked Sendable {
     public func start() {
         lock.lock(); defer { lock.unlock() }
         guard loop == nil else { return }
+        DotrinoNetwork.register(self)
         loop = Task { [weak self] in await self?.run() }
     }
 
@@ -133,7 +139,7 @@ public final class SealedSession: @unchecked Sendable {
             let u = url
             setStatus(Status(state: "connecting", url: u, reason: nil))
             do {
-                let c = try ProxyConnection(u, app: app)   // this app, for rings and the queue
+                let c = try ProxyConnection(u, app: app, traffic: traffic)   // this app, for rings and the queue
                 do {
                     try await c.connect()
                     _ = c.onMessage { [weak self, weak c] inc in
@@ -190,6 +196,7 @@ public final class SealedSession: @unchecked Sendable {
     }
 
     public func close() {
+        DotrinoNetwork.unregister(self)
         lock.withLock { direct }?.closeAll()
         let c: ProxyConnection? = lock.withLock { closed = true; return conn }
         c?.close()
@@ -243,12 +250,26 @@ public final class SealedSession: @unchecked Sendable {
         }
         let sealed = try sealing.seal(payload, to: keys)
         let d = lock.withLock { direct }
-        if let d, d.send(token, sealed.text) { return }
+        let text = sealed.text
+        if let d, d.send(token, text) {
+            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: pk, bytes: utf8Length(text))
+            return
+        }
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
         if let pk { try c.sendToOrElse(token, sealed) { try? c.sendByPubkey(pk, sealed, toApp: self.app) } }
         else { try c.sendTo([token], sealed) }
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
+    }
+
+    /// NETWORK STATS: how much came in and went out, per connection, and by which road — what
+    /// `stats()` of `@dotrino/proxy-client` gives. The topbar's network sheet reads it.
+    public func networkStats() -> NetworkStats {
+        let c = lock.withLock { conn }
+        let d = lock.withLock { direct }
+        let (proxy, peers) = traffic.snapshot(routeOf: { d?.route($0) }, pubkeyOf: { c?.pubkeyOfToken($0) })
+        return NetworkStats(url: url, app: app, node: c?.node, token: c?.token, connected: isOnline,
+                            since: traffic.since, proxy: proxy, peers: peers)
     }
 
     /// Sealed, BY PUBKEY (the proxy's 24 h offline queue). `quiet`: queue without ringing.
