@@ -49,7 +49,8 @@ agente — terminal, IA — corriendo en otra máquina de la cuenta):
 
 | Pieza | Qué es | Original en JS |
 |---|---|---|
-| `RemoteAgent` (**solo Android por ahora**) | el lado del CLIENTE de un agente remoto: `probe` (quién está encendido y qué es, sin encolar ni timbrar), `open` (saludo firmado con el papel del perfil; el ack del agente se juzga contra el acta: lo emitió una selladora y no nombra un acta más nueva) y la `Session` (canal por sesión ECDH P-256 → HKDF → AES-GCM; el proxio solo ve `{ type, sid, env }`) | `@dotrino/remote-agent` `client.js`, `e2e.js`, `discover.js` |
+| `RemoteAgent` | el lado del CLIENTE de un agente remoto: `probe` (quién está encendido y qué es, sin encolar ni timbrar), `open` (saludo firmado con el papel del perfil; el ack del agente se juzga contra el acta: lo emitió una selladora y no nombra un acta más nueva) y la `Session` (canal por sesión ECDH P-256 → HKDF → AES-GCM; el proxio solo ve `{ type, sid, env }`) | `@dotrino/remote-agent` `client.js`, `e2e.js`, `discover.js` |
+| `ActaSync` | pone al día el acta del teléfono desde la bóveda (`vault.devices` con `sinceSeq`), la adopta eslabón a eslabón con las reglas del pilar (`verifyActa`, `canAdopt`) y la guarda donde la lee la identidad; `RemoteAgent.open(…, catchUp)` la usa una vez ante `acta-vieja` | `@dotrino/identity` `vault/acta.js`, `core.js` (`adoptChain`) |
 | `Acta.sealersOf` | quién puede sellar el acta (y por tanto de quién valen los papeles) | `vault/acta.js` `sealersOf` |
 
 Comprobado contra un vector que sella el propio JS (`Tests/…/Resources/remote-agent.json` +
