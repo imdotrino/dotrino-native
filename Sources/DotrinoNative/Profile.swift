@@ -55,6 +55,22 @@ public final class Profile: @unchecked Sendable {
     /// This device's key, for the vault client (the phone talks to its vault as the profile's key).
     var deviceKeys: DeviceKeys { keys }
 
+    /// The record this phone holds (the library judges with it: [RemoteAgent]).
+    var record: JSON? { acta }
+
+    /// The `seq` of the record this phone holds, or nil without one.
+    public var actaSeq: Int64? { acta?["seq"]?.int }
+
+    /// The same profile with a newer record, once it was checked to chain from this one ([ActaSync]).
+    func withActa(_ next: JSON) -> Profile {
+        Profile(publickey: publickey, encPub: encPub, acta: next, renounces: renounces, keys: keys, pid: pid, history: history, vault: vault,
+                name: name, avatar: avatar, avatarSeed: avatarSeed)
+    }
+
+    /// A request to MY vault signed as this device (`signWithDevice` of the identity's vault
+    /// calls): not a signature on your behalf, so the acta's `sign` does not apply.
+    func signAsDevice(_ data: JSON) throws -> String { try keys.sign(Canonical.stringify(data)) }
+
     /// `myContentKey`: the NEWEST generation of the content key wrapped to me. Nil = not held (yet).
     public func contentKey() -> (gen: Int, cek: String)? {
         let ring = (acta?["keyring"]?.array ?? []).sorted { ($0["gen"]?.int ?? 0) > ($1["gen"]?.int ?? 0) }
@@ -104,6 +120,9 @@ public final class Profile: @unchecked Sendable {
     private static func scoped(_ pid: String, _ k: String) -> String {
         k.replacingOccurrences(of: "dotrino.identity.", with: "dotrino.identity.p.\(pid).", options: .anchored)
     }
+
+    /// Where the identity keeps the record of profile [pid] (`kv:` of its store).
+    static func actaKey(_ pid: String) -> String { "kv:" + scoped(pid, "dotrino.identity.acta") }
 
     /// The text of the object field `name` of a JSON record, AS WRITTEN (key order kept): the
     /// identity compares public keys by that exact string. A JWK has no nested objects.

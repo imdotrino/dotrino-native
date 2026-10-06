@@ -26,7 +26,8 @@ process.env.NODE_ENV = 'test'
 process.env.PROXY_DB_FILE = ':memory:'
 const proxy = require(path.join(root, 'dotrino-proxy/server.js'))
 const port = await proxy.start(0)
-const proxyUrl = `ws://127.0.0.1:${port}`
+// E2E_HOST: la IP de esta máquina en la LAN, para probar desde otra (el simulador de iOS en la Mac).
+const proxyUrl = `ws://${process.env.E2E_HOST || '127.0.0.1'}:${port}`
 
 const { startVault } = await import(path.join(root, 'dotrino-vault/src/vault.js'))
 const { parseInvite } = await import(path.join(root, 'dotrino-vault/lib/src/invite.js'))

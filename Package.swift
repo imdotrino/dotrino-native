@@ -29,7 +29,7 @@ let package = Package(
             name: "DotrinoNativeTests",
             dependencies: ["DotrinoNative", "DotrinoNativeUI", "DotrinoNativeWebRTC"],
             // Los MISMOS vectores que prueba Android (`test-vectors/gen.mjs` los escribe aquí).
-            resources: [.copy("Resources/vectors.json")]
+            resources: [.copy("Resources/vectors.json"), .copy("Resources/remote-agent.json")]
         ),
     ]
 )

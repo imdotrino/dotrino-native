@@ -421,9 +421,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     /// A directed message to a key. The payload travels as a JSON string, like the JS client
     /// sends it. [quiet]: queued the same, but the proxy does not ring their phone.
-    public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false, toApp: String? = nil) throws {
+    /// [ephemeral]: REAL TIME only — if they are not connected it is neither queued nor rung (a presence probe).
+    public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false, toApp: String? = nil, ephemeral: Bool = false) throws {
         var f: [String: JSON] = ["to_publickey": [.string(to)], "message": .string(payload.text)]
         if quiet { f["quiet"] = true }
+        if ephemeral { f["ephemeral"] = true }
         // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
         if let toApp { f["app"] = .string(toApp) }
         try send(.object(f))
