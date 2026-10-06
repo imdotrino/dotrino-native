@@ -56,7 +56,8 @@ final class RemoteAgentE2eTests: XCTestCase {
         defer { conn.close() }
         let candidates = RemoteAgent.candidates(p)
         XCTAssertEqual(candidates.first { $0.0 == agent }?.1, "TerminalDePrueba")
-        XCTAssertEqual(try await RemoteAgent.probe(conn, candidates.map(\.0))[agent], "terminal-agent")
+        let found = try await RemoteAgent.probe(conn, candidates.map(\.0))
+        XCTAssertEqual(found[agent], "terminal-agent")
 
         let session = try await RemoteAgent.open(p, conn, agent)
         let attached = OneShot<JSON>(), seen = OneShot<Void>()
