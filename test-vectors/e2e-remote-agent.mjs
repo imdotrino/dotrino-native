@@ -45,6 +45,11 @@ const sign = async (t) => Buffer.from(await crypto.subtle.sign({ name: 'ECDSA', 
 const phone = await enrollDevice({ qr: await invite('phone'), device: { publickey: dev.publickey, sign }, encPub: enc.encPublickey, label: 'phone', onChallenge: approve })
 
 // El AGENTE DE TERMINAL, el de verdad: se enrola como cualquier máquina y abre shells con su PTY.
+// El acta que tenía el teléfono al emparejarse, ANTES de que entrara el agente: el papel del
+// agente sale de una posterior, y con esta el teléfono contesta `acta-vieja` (lo que le pasaba a
+// la terminal de Android hasta que algo abría una página web de la identidad).
+const staleActa = (await vault.identity.profileActa()).acta
+
 const agentDir = tmp('ra-e2e-agent-')
 const agentPkg = path.join(root, 'dotrino-terminal/agent')
 const { enroll } = await import(path.join(agentPkg, 'link.js'))
@@ -62,6 +67,6 @@ const acta = (await vault.identity.profileActa()).acta
 
 fs.writeFileSync(out, JSON.stringify({
   proxyUrl, publickey: dev.publickey, privateJwk: dev.privateJwk, encPub: enc.encPublickey, encPrivateJwk: enc.encPrivateJwk,
-  acta, cert: phone.cert, master: phone.master, agentPubkey: link.device.publickey,
+  acta, staleActa, cert: phone.cert, master: phone.master, agentPubkey: link.device.publickey,
 }))
 console.log('e2e-remote-agent: ready at', proxyUrl, '· agent', agent.machineId)

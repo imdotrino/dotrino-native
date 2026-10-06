@@ -53,6 +53,8 @@ class Profile private constructor(
         private val json = Json { ignoreUnknownKeys = true }
         const val CURRENT = "dotrino.identity.current"
         private fun scoped(pid: String, k: String) = k.replace(Regex("^dotrino\\.identity\\."), "dotrino.identity.p.$pid.")
+        /** Where the identity keeps the record of profile [pid] (`kv:` of its store). */
+        internal fun actaKey(pid: String) = "kv:" + scoped(pid, "dotrino.identity.acta")
 
         /**
          * The active profile from the identity's store items (`storeLoad`: `kv:…`, `key:…`).
@@ -201,6 +203,18 @@ class Profile private constructor(
         }
         return keys.sign(Canonical.stringify(data))
     }
+
+    /**
+     * A request to MY vault signed as this device (`signWithDevice` of the identity's vault
+     * calls): it is not a signature on your behalf, so the acta's `sign` does not apply.
+     */
+    internal suspend fun signAsDevice(data: JsonObject): String = keys.sign(Canonical.stringify(data))
+
+    /** The `seq` of the record this phone holds, or null without one. */
+    val actaSeq: Long? get() = (acta?.get("seq") as? JsonPrimitive)?.content?.toLongOrNull()
+
+    /** The same profile with a newer record, once it was checked to chain from this one ([ActaSync]). */
+    internal fun withActa(next: JsonObject) = Profile(publickey, encPub, next, renounces, keys, pid, history, vault, name, avatar, avatarSeed)
 
     /**
      * `encrypt` of the identity (envelope v2): a fresh AES key for the text, and that key

@@ -163,7 +163,15 @@ object RemoteAgent {
      * vault), `no-reply`, `refused` (the agent said no, with its reason), `not-mine` (the ack
      * does not hold against the record, with the reason), `bad-ack`.
      */
-    suspend fun open(profile: Profile, conn: ProxyConnection, agentPubkey: String, timeoutMs: Long = 20_000): Session {
+    suspend fun open(
+        profile: Profile, conn: ProxyConnection, agentPubkey: String, timeoutMs: Long = 20_000,
+        /**
+         * Puts this phone's record up to date ([PhoneIdentity.catchUp]). Called ONCE, when the
+         * agent's paper names a newer record than mine (`acta-vieja`), and the ack is judged
+         * again against what it returns. Without it, `acta-vieja` stops the session.
+         */
+        catchUp: (suspend () -> Profile)? = null,
+    ): Session {
         val cert = profile.vault?.cert ?: throw RemoteAgentError("this profile is not linked to a vault", "no-vault")
         val (ephPriv, ephPub) = makeEphemeral()
         val data = buildJsonObject {
@@ -190,9 +198,13 @@ object RemoteAgent {
 
         val ack = res["ack"] as? JsonObject ?: throw RemoteAgentError("bad ack", "bad-ack")
         val sid = res["sid"]?.jsonPrimitive?.content ?: throw RemoteAgentError("bad ack", "bad-ack")
-        judge(ack, res["signature"]?.jsonPrimitive?.content ?: "", res["cert"] as? JsonObject, profile.acta)?.let {
-            throw RemoteAgentError("that agent is not certified by your vault: $it", "not-mine")
-        }
+        val ackSig = res["signature"]?.jsonPrimitive?.content ?: ""
+        val ackCert = res["cert"] as? JsonObject
+        var why = judge(ack, ackSig, ackCert, profile.acta)
+        // The agent's paper is from a record newer than mine: the vault changed it and this phone
+        // has not heard. Catch up and judge again — once; what still fails is said as it is.
+        if (why == "acta-vieja" && catchUp != null) why = judge(ack, ackSig, ackCert, catchUp().acta)
+        why?.let { throw RemoteAgentError("that agent is not certified by your vault: $it", "not-mine") }
         if (!Delegation.samePubkey(ack["machine"]?.jsonPrimitive?.content, agentPubkey)) throw RemoteAgentError("the ack came from another agent", "bad-ack")
         if (ack["ceph"]?.jsonPrimitive?.content != ephPub || ack["sid"]?.jsonPrimitive?.content != sid) throw RemoteAgentError("the ack is not for this handshake", "bad-ack")
         val seph = ack["seph"]?.jsonPrimitive?.content ?: throw RemoteAgentError("bad ack", "bad-ack")

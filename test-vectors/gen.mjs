@@ -127,6 +127,38 @@ const broadcast = [
   { key: '_noNode_key', secret: 'sec', hostPubkey: hostPub },
 ].map((r) => ({ ...r, encoded: encodeBroadcastRef(r), channel: broadcastChannel('padel', r.key) }))
 
+// 8) Ponerse al día con el acta (`ActaSync`): una cadena REAL sellada por el pilar, y lo que el
+//    pilar contesta en cada caso — verificar, adoptar y el hash. La prueba nativa tiene que dar
+//    exactamente las mismas razones: si no, el teléfono adoptaría lo que la web rechaza o al revés.
+const ActaJs = await import(join(id, 'acta.js'))
+const sA = await makeDeviceKey({ label: 'sealer' }); const eA = await makeDeviceEncKey()
+const sB = await makeDeviceKey({ label: 'phone' }); const eB = await makeDeviceEncKey()
+const sC = await makeDeviceKey({ label: 'stranger' })
+const g1 = await ActaJs.sealActa({ acta: ActaJs.genesisActa({ pub: sA.publickey, encPub: eA.encPublickey, label: 'pc' }), privateJwk: sA.privateJwk })
+const g2 = await ActaJs.sealActa({ acta: await ActaJs.applyChanges(g1, [{ op: 'admit', member: { pub: sB.publickey, encPub: eB.encPublickey, caps: ['sign', 'store'], label: 'phone' } }], { by: sA.publickey, now: 1790000000000 }), privateJwk: sA.privateJwk })
+const g3 = await ActaJs.sealActa({ acta: await ActaJs.applyChanges(g2, [{ op: 'caps', pub: sB.publickey, caps: ['sign', 'store', 'read'] }], { by: sA.publickey, now: 1790000001000 }), privateJwk: sA.privateJwk })
+// Lo que NO se debe adoptar: tocado después de firmar, sin encadenar, sellado por un extraño.
+const tampered = { ...g2, members: g2.members.map((m) => ({ ...m, caps: [...m.caps, 'admin'] })) }
+const unchained = await ActaJs.sealActa({ acta: { ...ActaJs.actaBody(g2), prev: '0'.repeat(64) }, privateJwk: sA.privateJwk })
+const stranger = await ActaJs.sealActa({ acta: { ...ActaJs.actaBody(g3), sealedBy: sC.publickey }, privateJwk: sC.privateJwk }).catch(() => null)
+const named = { g1, g2, g3, tampered, unchained, ...(stranger ? { stranger } : {}) }
+const actaCases = []
+for (const [cand, cur] of [['g2', 'g1'], ['g3', 'g1'], ['g3', 'g2'], ['g1', 'g2'], ['g2', 'g2'], ['tampered', 'g1'], ['unchained', 'g1'], ['stranger', 'g2'], ['g1', null]]) {
+  if (!named[cand]) continue
+  const r = await ActaJs.canAdopt({ candidate: named[cand], current: cur ? named[cur] : null })
+  actaCases.push({ candidate: cand, current: cur, adopt: r.adopt, reason: r.reason })
+}
+const actaVerify = []
+for (const [k, a] of Object.entries(named)) actaVerify.push({ name: k, reason: (await ActaJs.verifyActa({ acta: a })).ok ? null : (await ActaJs.verifyActa({ acta: a })).reason })
+// `adoptChain` de la identidad, sobre una lista desordenada y con basura: se ordena por `seq` y
+// cada eslabón se juzga contra el último adoptado (core.js). Lo que gana lo dice el pilar.
+const chainOrder = ['g3', 'tampered', 'g2', 'unchained', 'stranger'].filter((k) => named[k])
+let chainCur = g1; let chainWon = null
+for (const k of [...chainOrder].sort((x, y) => named[x].seq - named[y].seq)) {
+  if ((await ActaJs.canAdopt({ candidate: named[k], current: chainCur })).adopt) { chainCur = named[k]; chainWon = k }
+}
+const actaHashes = Object.fromEntries(await Promise.all(Object.entries(named).map(async ([k, a]) => [k, await ActaJs.actaHash(a)])))
+
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
@@ -134,6 +166,7 @@ writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), 
   store: { digests, plans },
   actaProfile: { signPrivateJwk: repSign.privateJwk, encPrivateJwk: repEnc.encPrivateJwk, acta: repActa },
   acta: { acta: actaA, cases: acta },
+  actaSync: { actas: named, adopt: actaCases, verify: actaVerify, hashes: actaHashes, chain: { from: 'g1', order: chainOrder, won: chainWon } },
   broadcast,
   canon,
   sign: { privateJwk: dev.privateJwk, publickey: dev.publickey, data, signature },

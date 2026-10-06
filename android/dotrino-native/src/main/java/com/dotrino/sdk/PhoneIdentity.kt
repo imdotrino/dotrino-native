@@ -43,6 +43,19 @@ class PhoneIdentity(context: Context) {
         }, profile)
     }
 
+    /**
+     * Puts [profile]'s record up to date from its vault over [conn] (identified as the profile),
+     * and keeps it in the identity app for every app of the phone ([ActaSync]).
+     */
+    suspend fun catchUp(profile: Profile, conn: ProxyConnection): Profile {
+        val c = client ?: IdentityClient(app).also { client = it }
+        return ActaSync.update(profile, conn, { k, v ->
+            c.call("storeSet", kotlinx.serialization.json.buildJsonObject {
+                put("k", kotlinx.serialization.json.JsonPrimitive(k)); put("v", kotlinx.serialization.json.JsonPrimitive(v))
+            })
+        })
+    }
+
     fun close() { client?.close(); client = null }
 
     companion object {
