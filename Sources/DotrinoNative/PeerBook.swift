@@ -119,7 +119,17 @@ public final class PeerBook: @unchecked Sendable {
         return try change { upsert(&$0, publickey, allowed) }
     }
 
-    /// `removeContact`: the record stays (ratings, card); it just stops being a contact.
+    /// `setBlocked` (@dotrino/identity ≥ 0.108): BLOCK someone — a PRIVATE flag, apart from the
+    /// rating, never signed nor published. It travels with the book to the vault and the other
+    /// devices; a CHANGE with a date, and unblocking leaves `false` so it travels too.
+    @discardableResult
+    public func setBlocked(_ publickey: String, _ blocked: Bool) throws -> JSON {
+        try change { upsert(&$0, publickey, ["blocked": .bool(blocked), "changedAt": .int(nowMs())]) }
+    }
+
+    /// I blocked them (the record says `blocked: true`).
+    public func isBlocked(_ publickey: String) throws -> Bool { try get(publickey)?["blocked"]?.bool == true }
+
     @discardableResult
     /// `removeContact`: the record stays; it just stops being a contact. It is a CHANGE with a
     /// date (`changedAt`), so it does not come back from another device (`PeerBookBackup`).
@@ -152,7 +162,7 @@ public final class PeerBook: @unchecked Sendable {
                 guard let a = peers[pk]?.object else { peers[pk] = .object(base); n += 1; continue }
                 var m = a
                 let bNewer = PeerBookBackup.stampOf(b) > PeerBookBackup.stampOf(.object(a))
-                if bNewer { for k in ["nickname", "notes", "contactNotes", "encryptionPubkey", "rating"] { if let v = bo[k] { m[k] = v } } }
+                if bNewer { for k in ["nickname", "notes", "contactNotes", "encryptionPubkey", "rating", "blocked"] { if let v = bo[k] { m[k] = v } } }
                 let newer = bNewer ? bo : a
                 if newer["isContact"]?.bool == true { m["isContact"] = true } else { m["isContact"] = nil }
                 if let f = [a["firstSeen"]?.int, bo["firstSeen"]?.int].compactMap({ $0 }).min() { m["firstSeen"] = .int(f) }

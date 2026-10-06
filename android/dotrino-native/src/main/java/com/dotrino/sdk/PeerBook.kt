@@ -132,6 +132,18 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
         JsonObject(rec - "isContact" + ("changedAt" to JsonPrimitive(System.currentTimeMillis()))).also { peers[publickey] = it }
     }
 
+    /**
+     * `setBlocked` (@dotrino/identity ≥ 0.108): BLOCK someone — a PRIVATE flag, apart from the
+     * rating, never signed nor published. It travels with the book to the vault and the other
+     * devices; a CHANGE with a date, and unblocking leaves `false` so it travels too.
+     */
+    suspend fun setBlocked(publickey: String, blocked: Boolean): JsonObject = change {
+        upsert(it, publickey, mapOf("blocked" to JsonPrimitive(blocked), "changedAt" to JsonPrimitive(System.currentTimeMillis())))
+    }
+
+    /** I blocked them (the record says `blocked: true`). */
+    suspend fun isBlocked(publickey: String): Boolean = (get(publickey)?.get("blocked") as? JsonPrimitive)?.content == "true"
+
     /** Every record, by key (for [PeerBookBackup]). */
     suspend fun all(): Map<String, JsonObject> = lock.withLock { read() }
 
@@ -155,7 +167,7 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
                 val m = a.toMutableMap()
                 val newer = if (PeerBookBackup.stampOf(b) > PeerBookBackup.stampOf(a)) b else a
                 if (newer === b) {
-                    for (k in listOf("nickname", "notes", "contactNotes", "encryptionPubkey", "rating")) b[k]?.let { m[k] = it }
+                    for (k in listOf("nickname", "notes", "contactNotes", "encryptionPubkey", "rating", "blocked")) b[k]?.let { m[k] = it }
                 }
                 if ((newer["isContact"] as? JsonPrimitive)?.content == "true") m["isContact"] = JsonPrimitive(true) else m.remove("isContact")
                 val first = listOfNotNull(a.long("firstSeen"), b.long("firstSeen")).minOrNull()

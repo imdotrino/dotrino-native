@@ -36,6 +36,24 @@ final class PeerBookTests: XCTestCase {
         XCTAssertEqual(try b.get(dev)?["nickname"]?.string, "Beto")
     }
 
+    /// Blocking is private and travels with the book: the newer change wins on another device, unblocking too.
+    func testABlockTravelsAndTheNewerChangeWins() throws {
+        let pk = "{\"kty\":\"EC\",\"x\":\"b\"}"
+        let a = book(), b = book()
+        try a.addContact(pk, nickname: "Beto"); try b.addContact(pk, nickname: "Beto")
+        Thread.sleep(forTimeInterval: 0.005) // distinct milliseconds: the newer change has to be newer
+        let blocked = try a.setBlocked(pk, true)
+        XCTAssertTrue(try a.isBlocked(pk))
+        XCTAssertNil(blocked["myRating"])
+        Thread.sleep(forTimeInterval: 0.005)
+        _ = try b.mergeFrom([try a.get(pk)!])
+        XCTAssertTrue(try b.isBlocked(pk))
+        Thread.sleep(forTimeInterval: 0.005)
+        try b.setBlocked(pk, false)
+        _ = try a.mergeFrom([try b.get(pk)!])
+        XCTAssertFalse(try a.isBlocked(pk))
+    }
+
     func testMergesAJsEndorsementOnlyIfItsSignatureHolds() throws {
         let p = try peers()
         let e = p["endorsement"]!, subject = p["subject"]!.string!

@@ -45,6 +45,24 @@ class PeerBookTest {
         assertEquals("Beto", b.get(dev)!!["nickname"]!!.jsonPrimitive.content) // the record stays
     }
 
+    /** Blocking is private and travels with the book: the newer change wins on another device, unblocking too. */
+    @Test fun aBlockTravelsAndTheNewerChangeWins() = runBlocking {
+        val pk = "{\"kty\":\"EC\",\"x\":\"b\"}"
+        val a = book(); val b = book()
+        a.addContact(pk, nickname = "Beto"); b.addContact(pk, nickname = "Beto")
+        Thread.sleep(5) // distinct milliseconds: the newer change has to be newer
+        val blocked = a.setBlocked(pk, true)
+        assertEquals(true, a.isBlocked(pk))
+        assertEquals(null, blocked["myRating"]) // blocking is not rating: nothing signed
+        Thread.sleep(5)
+        b.mergeFrom(listOf(a.get(pk)!!))
+        assertEquals(true, b.isBlocked(pk))
+        Thread.sleep(5)
+        b.setBlocked(pk, false)
+        a.mergeFrom(listOf(b.get(pk)!!))
+        assertEquals(false, a.isBlocked(pk))
+    }
+
     @Test fun mergesAJsEndorsementOnlyIfItsSignatureHolds() = runBlocking {
         val e = p.getValue("endorsement").jsonObject
         val subject = p.getValue("subject").jsonPrimitive.content
