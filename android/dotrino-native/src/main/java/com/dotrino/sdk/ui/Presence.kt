@@ -1,6 +1,7 @@
 package com.dotrino.sdk.ui
 
 import android.app.Activity
+import android.content.Context
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -21,8 +22,12 @@ import com.dotrino.sdk.R
  * this is a check in the app, before the call. It closes «the phone was left unlocked», not
  * «the app was tampered with».
  *
- * NO WAY AROUND IT. A phone with no screen lock cannot confirm anyone, so the answer is
- * [Result.Unavailable] and the action does not happen — it is never «nothing to ask, go on».
+ * OFF BY DEFAULT (owner, 2026-10-07: «a profile starts with nothing»). The person turns it on
+ * where they want it ([turn], [isOn]) and the app asks with [confirmIfOn]. Turning it off asks
+ * first too: otherwise whoever holds the unlocked phone would just switch it off.
+ *
+ * ONCE ON, NO WAY AROUND IT. A phone with no screen lock cannot confirm anyone, so the answer
+ * is [Result.Unavailable] and the action does not happen — it is never «nothing to ask, go on».
  */
 object Presence {
     sealed interface Result {
@@ -60,6 +65,24 @@ object Presence {
                 else -> Result.Failed(message.toString())
             })
         })
+    }
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("dotrino.presence", Context.MODE_PRIVATE)
+
+    /** Whether the person turned it on for [key] (an account, a kind of action). Off until they do. */
+    fun isOn(ctx: Context, key: String): Boolean = prefs(ctx).getBoolean(key, false)
+
+    /** Turns it on or off for [key]. The phone confirms FIRST, both ways; only then it is saved. */
+    fun turn(activity: Activity, key: String, on: Boolean, what: String, done: (Result) -> Unit) {
+        confirm(activity, what) { r ->
+            if (r == Result.Confirmed) prefs(activity).edit().putBoolean(key, on).apply()
+            done(r)
+        }
+    }
+
+    /** [confirm] where the person turned it on for [key]; where they did not, there is nothing to ask. */
+    fun confirmIfOn(activity: Activity, key: String, what: String, done: (Result) -> Unit) {
+        if (isOn(activity, key)) confirm(activity, what, done) else done(Result.Confirmed)
     }
 
     /** What to show for a result that did not confirm; null when there is nothing to say. */

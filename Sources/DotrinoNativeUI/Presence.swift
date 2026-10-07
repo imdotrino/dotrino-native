@@ -13,7 +13,11 @@ import LocalAuthentication
 /// without it; this is a check in the app, before the call. It closes «the phone was left
 /// unlocked», not «the app was tampered with».
 ///
-/// NO WAY AROUND IT. A phone with no passcode cannot confirm anyone, so the answer is
+/// OFF BY DEFAULT (owner, 2026-10-07: «a profile starts with nothing»). The person turns it on
+/// where they want it (`turn`, `isOn`) and the app asks with `confirmIfOn`. Turning it off asks
+/// first too: otherwise whoever holds the unlocked phone would just switch it off.
+///
+/// ONCE ON, NO WAY AROUND IT. A phone with no passcode cannot confirm anyone, so the answer is
 /// `.unavailable` and the action does not happen — it is never «nothing to ask, go on».
 public enum Presence {
     public enum Outcome: Equatable {
@@ -50,6 +54,23 @@ public enum Presence {
         } catch {
             return .failed(error.localizedDescription)
         }
+    }
+
+    private static func slot(_ key: String) -> String { "dotrino.presence." + key }
+
+    /// Whether the person turned it on for `key` (an account, a kind of action). Off until they do.
+    public static func isOn(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: slot(key)) }
+
+    /// Turns it on or off for `key`. The phone confirms FIRST, both ways; only then it is saved.
+    public static func turn(_ key: String, on: Bool, reason: String) async -> Outcome {
+        let o = await confirm(reason)
+        if o == .confirmed { UserDefaults.standard.set(on, forKey: slot(key)) }
+        return o
+    }
+
+    /// `confirm` where the person turned it on for `key`; where they did not, there is nothing to ask.
+    public static func confirmIfOn(_ key: String, reason: String) async -> Outcome {
+        isOn(key) ? await confirm(reason) : .confirmed
     }
 
     /// What to show for an outcome that did not confirm; nil when there is nothing to say.
