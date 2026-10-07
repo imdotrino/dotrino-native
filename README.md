@@ -24,7 +24,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `Delegation.kt` | `pubkeyId`, `keyLabel`, cuerpo y comprobación del papel | `vault/keyid.js`, `delegationBody` |
 | `KeystoreKeys.kt` | las dos llaves de una cuenta en el Android Keystore | — |
 | `ProxyConnection.kt` | `connected` / `identify` / `push-subscribe` / mensaje por pubkey | `proxy-client/src/client.js` |
-| `VaultClient.kt` | `approvals` / `approve` / `deny` / `grants` / `renew` | `vault/remote.js` `vaultRpc` |
+| `VaultClient.kt` | `approvals` / `approve` / `deny` / `block` (0.26.0: un incidente se bloquea o se ignora) / `grants` / `renew` | `vault/remote.js` `vaultRpc` |
 | `AccountStore.kt` | las cuentas en disco, cifradas con una llave del Keystore | — |
 | `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, lápidas, sellado; una caché por app | `@dotrino/store` (el respaldo en la bóveda es `VaultBackup`) |
 

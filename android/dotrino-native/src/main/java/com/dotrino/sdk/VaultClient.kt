@@ -163,6 +163,8 @@ class VaultClient(
 
     suspend fun approve(id: String) = answer("approve", id)
     suspend fun deny(id: String) = answer("deny", id)
+    /** An INCIDENT (kind `incident`) is answered with block or deny (= ignore). Blocking keeps that device out of the vault and of every agent until the vault unblocks it (vaultd ≥ 0.142.0). */
+    suspend fun block(id: String) = answer("block", id)
 
     private suspend fun answer(op: String, id: String) {
         val body = secrets(buildJsonObject { put("op", op); put("id", id) })

@@ -173,6 +173,8 @@ public final class VaultClient: @unchecked Sendable {
 
     public func approve(_ id: String) async throws { try await answer("approve", id) }
     public func deny(_ id: String) async throws { try await answer("deny", id) }
+    /// An INCIDENT (kind `incident`) is answered with block or deny (= ignore). Blocking keeps that device out of the vault and of every agent until the vault unblocks it (vaultd ≥ 0.142.0).
+    public func block(_ id: String) async throws { try await answer("block", id) }
 
     private func answer(_ op: String, _ id: String) async throws {
         let body = try await secretsCall(["op": .string(op), "id": .string(id)])
