@@ -38,6 +38,7 @@
     <string name="dotrino_net_all_proxy">Todo lo que pasó por el proxy</string>
     <string name="dotrino_net_connections">Conexiones (%1$d)</string>
     <string name="dotrino_net_none">Todavía no hay conexiones con otros aparatos.</string>
+    <string name="dotrino_net_no_answer">Sin respuesta: %1$d · ↑ %2$s</string>
     <string name="dotrino_net_note">Bytes del contenido, sin las cabeceras de la red.</string>
     <string name="dotrino_net_msgs">%1$d mensajes</string>
     <string name="dotrino_net_route_proxy">Proxy</string>

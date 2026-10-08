@@ -136,8 +136,13 @@ fun NetworkStats.report(): String {
     sb.append(if (connected) " | connected" else " | disconnected")
     sb.append(" | since ${time.format(java.util.Date(since))}\n")
     sb.append("  proxy total: in ${NetworkReport.bytes(proxy.bytesIn)} / out ${NetworkReport.bytes(proxy.bytesOut)} (frames ${proxy.framesIn}/${proxy.framesOut})\n")
-    sb.append("  connections: ${peers.size}\n")
-    for (p in peers) {
+    // WHO ANSWERED AND WHO DID NOT. A probe (one ping to every device of the record, to see
+    // which is on) leaves an entry per recipient even when nobody replies, and twelve lines
+    // read as twelve connections. The ones that talked are listed; the rest is one line.
+    val talking = peers.filter { it.msgsIn > 0 }
+    val silent = peers.filter { it.msgsIn == 0 }
+    sb.append("  peers: ${talking.size}\n")
+    for (p in talking) {
         // The device by its ID (`AB12-CD34`, the one the vault shows), never a slice of the JWK;
         // the token whole (owner, 2026-10-07: nothing to gain by cutting it).
         val who = p.pubkey?.let { runCatching { Delegation.keyLabel(it) }.getOrNull() } ?: "?"
@@ -145,6 +150,7 @@ fun NetworkStats.report(): String {
         p.token?.let { sb.append(" (token $it)") }
         sb.append(" | route=${p.route} | in: ${NetworkReport.paths(p.bytesIn)} | out: ${NetworkReport.paths(p.bytesOut)} | ${p.msgsIn + p.msgsOut} msgs\n")
     }
+    if (silent.isNotEmpty()) sb.append("  no answer: ${silent.size} (out ${NetworkReport.bytes(silent.sumOf { it.bytesOut.total })}, ${silent.sumOf { it.msgsOut }} msgs)\n")
     return sb.toString()
 }
 

@@ -24,6 +24,7 @@
 "dotrino_net_all_proxy" = "Todo lo que pasó por el proxy";
 "dotrino_net_connections" = "Conexiones (%1$ld)";
 "dotrino_net_none" = "Todavía no hay conexiones con otros aparatos.";
+"dotrino_net_no_answer" = "Sin respuesta: %1$ld · ↑ %2$@";
 "dotrino_net_note" = "Bytes del contenido, sin las cabeceras de la red.";
 "dotrino_net_msgs" = "%1$ld mensajes";
 "dotrino_net_route_proxy" = "Proxy";

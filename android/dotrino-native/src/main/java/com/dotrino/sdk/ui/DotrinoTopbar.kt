@@ -293,9 +293,14 @@ class DotrinoTopbar(
                 addView(line(activity.getString(R.string.dotrino_net_all_proxy), 13f, R.color.dotrino_muted), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(line("↓ ${fmtBytes(s.proxy.bytesIn)}  ↑ ${fmtBytes(s.proxy.bytesOut)}", 13f, R.color.dotrino_fg))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8); bottomMargin = px(8) })
-            body.addView(line(activity.getString(R.string.dotrino_net_connections, s.peers.size).uppercase(), 11f, R.color.dotrino_muted))
-            if (s.peers.isEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_none), 14f, R.color.dotrino_muted))
-            for (p in s.peers) body.addView(netPeer(p), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // Only who answered is a connection; a device that just got a ping (the probe for which
+            // machines are on) goes in one summary line (same split as NetworkStats.report).
+            val talking = s.peers.filter { it.msgsIn > 0 }
+            val silent = s.peers.filter { it.msgsIn == 0 }
+            body.addView(line(activity.getString(R.string.dotrino_net_connections, talking.size).uppercase(), 11f, R.color.dotrino_muted))
+            if (talking.isEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_none), 14f, R.color.dotrino_muted))
+            for (p in talking) body.addView(netPeer(p), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            if (silent.isNotEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_no_answer, silent.size, fmtBytes(silent.sumOf { it.bytesOut.total })), 13f, R.color.dotrino_muted))
             body.addView(View(activity), LinearLayout.LayoutParams(1, px(14)))
         }
     }

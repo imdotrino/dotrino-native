@@ -133,14 +133,22 @@ extension NetworkStats {
         out += connected ? " | connected" : " | disconnected"
         out += " | since \(f.string(from: since))\n"
         out += "  proxy total: in \(NetworkStats.bytes(proxy.bytesIn)) / out \(NetworkStats.bytes(proxy.bytesOut)) (frames \(proxy.framesIn)/\(proxy.framesOut))\n"
-        out += "  connections: \(peers.count)\n"
-        for p in peers {
+        // WHO ANSWERED AND WHO DID NOT. A probe (one ping to every device of the record, to see
+        // which is on) leaves an entry per recipient even when nobody replies, and twelve lines
+        // read as twelve connections. The ones that talked are listed; the rest is one line.
+        let talking = peers.filter { $0.msgsIn > 0 }
+        let silent = peers.filter { $0.msgsIn == 0 }
+        out += "  peers: \(talking.count)\n"
+        for p in talking {
             // The device by its ID (`AB12-CD34`, the one the vault shows), never a slice of the JWK;
             // the token whole (owner, 2026-10-07: nothing to gain by cutting it).
             let who = p.pubkey.flatMap { try? Delegation.keyLabel($0) } ?? "?"
             out += "  - \(who)"
             if let t = p.token { out += " (token \(t))" }
             out += " | route=\(p.route) | in: \(NetworkStats.paths(p.bytesIn)) | out: \(NetworkStats.paths(p.bytesOut)) | \(p.msgsIn + p.msgsOut) msgs\n"
+        }
+        if !silent.isEmpty {
+            out += "  no answer: \(silent.count) (out \(NetworkStats.bytes(silent.reduce(0) { $0 + $1.bytesOut.total })), \(silent.reduce(0) { $0 + $1.msgsOut }) msgs)\n"
         }
         return out
     }

@@ -326,9 +326,17 @@ private struct NetSheet: View {
                 Text("↓ \(fmt(s.proxy.bytesIn))  ↑ \(fmt(s.proxy.bytesOut))").font(.footnote.monospacedDigit()).foregroundColor(DotrinoPalette.fg)
             }
             .padding(10).overlay(RoundedRectangle(cornerRadius: 9).stroke(DotrinoPalette.muted.opacity(0.4)))
-            Text(T("dotrino_net_connections", s.peers.count).uppercased()).font(.caption2).foregroundColor(DotrinoPalette.muted).padding(.top, 6)
-            if s.peers.isEmpty { Text(T("dotrino_net_none")).font(.footnote).foregroundColor(DotrinoPalette.muted) }
-            ForEach(s.peers) { p in peer(p) }
+            // Only who answered is a connection; a device that just got a ping (the probe for which
+            // machines are on) goes in one summary line (same split as NetworkStats.report).
+            let talking = s.peers.filter { $0.msgsIn > 0 }
+            let silent = s.peers.filter { $0.msgsIn == 0 }
+            Text(T("dotrino_net_connections", talking.count).uppercased()).font(.caption2).foregroundColor(DotrinoPalette.muted).padding(.top, 6)
+            if talking.isEmpty { Text(T("dotrino_net_none")).font(.footnote).foregroundColor(DotrinoPalette.muted) }
+            ForEach(talking) { p in peer(p) }
+            if !silent.isEmpty {
+                Text(lang.text("dotrino_net_no_answer", in: .module, silent.count, fmt(silent.reduce(0) { $0 + $1.bytesOut.total })))
+                    .font(.footnote).foregroundColor(DotrinoPalette.muted).accessibilityIdentifier("net-silent")
+            }
         }
         .accessibilityIdentifier("net-transport")
     }
