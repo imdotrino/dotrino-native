@@ -139,7 +139,10 @@ fun NetworkStats.report(): String {
     // WHO ANSWERED AND WHO DID NOT. A probe (one ping to every device of the record, to see
     // which is on) leaves an entry per recipient even when nobody replies, and twelve lines
     // read as twelve connections. The ones that talked are listed; the rest is one line.
-    val talking = peers.filter { it.msgsIn > 0 }
+    // `unknown`: someone who wrote to us, never got an answer and whose key we do not know
+    // (another device probing which machines are on). Not a connection either.
+    val unknown = peers.filter { it.msgsIn > 0 && it.msgsOut == 0 && it.pubkey == null }
+    val talking = peers.filter { it.msgsIn > 0 && !(it.msgsOut == 0 && it.pubkey == null) }
     val silent = peers.filter { it.msgsIn == 0 }
     sb.append("  peers: ${talking.size}\n")
     for (p in talking) {
@@ -151,6 +154,7 @@ fun NetworkStats.report(): String {
         sb.append(" | route=${p.route} | in: ${NetworkReport.paths(p.bytesIn)} | out: ${NetworkReport.paths(p.bytesOut)} | ${p.msgsIn + p.msgsOut} msgs\n")
     }
     if (silent.isNotEmpty()) sb.append("  no answer: ${silent.size} (out ${NetworkReport.bytes(silent.sumOf { it.bytesOut.total })}, ${silent.sumOf { it.msgsOut }} msgs)\n")
+    if (unknown.isNotEmpty()) sb.append("  unknown senders: ${unknown.size} (in ${NetworkReport.bytes(unknown.sumOf { it.bytesIn.total })}, ${unknown.sumOf { it.msgsIn }} msgs)\n")
     return sb.toString()
 }
 

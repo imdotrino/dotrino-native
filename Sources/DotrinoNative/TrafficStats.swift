@@ -136,7 +136,10 @@ extension NetworkStats {
         // WHO ANSWERED AND WHO DID NOT. A probe (one ping to every device of the record, to see
         // which is on) leaves an entry per recipient even when nobody replies, and twelve lines
         // read as twelve connections. The ones that talked are listed; the rest is one line.
-        let talking = peers.filter { $0.msgsIn > 0 }
+        // `unknown`: someone who wrote to us, never got an answer and whose key we do not know
+        // (another device probing which machines are on). Not a connection either.
+        let unknown = peers.filter { $0.msgsIn > 0 && $0.msgsOut == 0 && $0.pubkey == nil }
+        let talking = peers.filter { $0.msgsIn > 0 && !($0.msgsOut == 0 && $0.pubkey == nil) }
         let silent = peers.filter { $0.msgsIn == 0 }
         out += "  peers: \(talking.count)\n"
         for p in talking {
@@ -149,6 +152,9 @@ extension NetworkStats {
         }
         if !silent.isEmpty {
             out += "  no answer: \(silent.count) (out \(NetworkStats.bytes(silent.reduce(0) { $0 + $1.bytesOut.total })), \(silent.reduce(0) { $0 + $1.msgsOut }) msgs)\n"
+        }
+        if !unknown.isEmpty {
+            out += "  unknown senders: \(unknown.count) (in \(NetworkStats.bytes(unknown.reduce(0) { $0 + $1.bytesIn.total })), \(unknown.reduce(0) { $0 + $1.msgsIn }) msgs)\n"
         }
         return out
     }

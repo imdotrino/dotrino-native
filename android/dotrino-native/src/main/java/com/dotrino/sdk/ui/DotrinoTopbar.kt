@@ -295,12 +295,14 @@ class DotrinoTopbar(
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8); bottomMargin = px(8) })
             // Only who answered is a connection; a device that just got a ping (the probe for which
             // machines are on) goes in one summary line (same split as NetworkStats.report).
-            val talking = s.peers.filter { it.msgsIn > 0 }
+            val unknown = s.peers.filter { it.msgsIn > 0 && it.msgsOut == 0 && it.pubkey == null }
+            val talking = s.peers.filter { it.msgsIn > 0 && !(it.msgsOut == 0 && it.pubkey == null) }
             val silent = s.peers.filter { it.msgsIn == 0 }
             body.addView(line(activity.getString(R.string.dotrino_net_connections, talking.size).uppercase(), 11f, R.color.dotrino_muted))
             if (talking.isEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_none), 14f, R.color.dotrino_muted))
             for (p in talking) body.addView(netPeer(p), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (silent.isNotEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_no_answer, silent.size, fmtBytes(silent.sumOf { it.bytesOut.total })), 13f, R.color.dotrino_muted))
+            if (unknown.isNotEmpty()) body.addView(line(activity.getString(R.string.dotrino_net_unknown, unknown.size, fmtBytes(unknown.sumOf { it.bytesIn.total })), 13f, R.color.dotrino_muted))
             body.addView(View(activity), LinearLayout.LayoutParams(1, px(14)))
         }
     }
