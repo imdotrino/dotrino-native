@@ -91,6 +91,8 @@ class ProxyConnection(
     // frame of the transport, in the clear on purpose: it only carries a PUBLIC key the proxy
     // already bound to the connection at `identify`.
     private val tokenPubkeys = ConcurrentHashMap<String, String>()
+    /** The direct road ([useDirect]), for a connection that no [SealedSession] wraps. */
+    @Volatile private var direct: DirectTransport? = null
     private val helloSent = ConcurrentHashMap.newKeySet<String>()
     /** The identity I identified as; the greeting says it. */
     @Volatile var myPublickey: String? = null; private set
@@ -118,6 +120,7 @@ class ProxyConnection(
         if (closed != null) return
         closed = reason
         ended.complete(reason)
+        runCatching { direct?.closeAll() }
         val e = ProxyError(reason, "disconnected")
         connected.completeExceptionally(e)
         pending.values.forEach { it.completeExceptionally(e) }
@@ -151,6 +154,12 @@ class ProxyConnection(
                 // The greeting is the transport's: it is answered here and never reaches the app.
                 if ((payload["t"] as? JsonPrimitive)?.content == HELLO_TAG) {
                     if (from != null) onHello(from, payload)
+                    return
+                }
+                // The direct road's signalling is a transport control frame: to WebRTC, not the app.
+                if ((payload["t"] as? JsonPrimitive)?.content == DirectTransport.RTC_TAG) {
+                    val d = direct
+                    if (d != null && from != null) d.handleSignal(from, payload)
                     return
                 }
                 val inc = Incoming(
@@ -255,13 +264,72 @@ class ProxyConnection(
     /** Whose this token is, if someone said it. */
     fun pubkeyOfToken(t: String): String? = tokenPubkeys[t]
 
+    // ---- the direct road for a BARE connection (0.28.0) ----
+    //
+    // The transport always prefers the most direct road (CLAUDE.md, 2026-09-03): WebRTC direct,
+    // WebRTC through TURN, and the proxy last. [SealedSession] has this for its own; a connection
+    // used on its own (the terminal's, which carries [RemoteAgent] sessions) gets it here, the same
+    // way: plug the road in, send BY TOKEN, and the first message opens the channel underneath.
+
     /**
-     * A BARE connection shows its traffic in the topbar too (0.27.0): the road is always the proxy
-     * (WebRTC is [SealedSession]'s). The app registers [statsSource] with [DotrinoNetwork] once it is
+     * Plugs in the direct road (`dotrino-webrtc`). What [sendToOrUpgrade] sends by token prefers an
+     * open channel; what arrives through one is delivered like a proxy message.
+     */
+    fun useDirect(d: DirectTransport) {
+        direct = d
+        d.bind(
+            selfToken = { token },
+            signalSend = { to, msg -> runCatching { sendTo(listOf(to), msg) } },
+            deliver = { from, text ->
+                traffic.peer(true, d.route(from) ?: "webrtc", from, pubkeyOfToken(from), utf8Length(text))
+                val payload = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return@bind
+                val inc = Incoming(from, pubkeyOfToken(from), payload)
+                listeners.forEach { runCatching { it(inc) } }
+            },
+        )
+    }
+
+    /** Whether a direct road is plugged in. */
+    val hasDirect: Boolean get() = direct != null
+
+    /** Where [token] goes NOW (`direct` / `turn` / `webrtc` / `connecting` / `failed`), or null: the proxy. */
+    fun routeOf(token: String): String? = direct?.route(token)
+
+    /**
+     * To ONE token by the best road there is NOW: the open channel, or the proxy — and, knowing
+     * whose the token is, a dead token (they restarted) sends the same thing by pubkey, to the
+     * queue. Then it tries to go direct for the next one, without waiting for anybody. The
+     * `sendToOrQueue` of the JS client.
+     */
+    fun sendToOrUpgrade(token: String, payload: JsonObject, peerPubkey: String? = null) {
+        val d = direct
+        val text = payload.toString()
+        if (d != null && d.send(token, text)) {
+            traffic.peer(false, d.route(token) ?: "webrtc", token, peerPubkey ?: pubkeyOfToken(token), utf8Length(text))
+            return
+        }
+        if (peerPubkey != null) sendToOrElse(token, payload) { runCatching { sendByPubkey(peerPubkey, payload, toApp = app) } }
+        else sendTo(listOf(token), payload)
+        d?.upgrade(token)
+    }
+
+    /**
+     * TURN for the direct road: the proxy's credentials for this identity (signed), plus STUN.
+     * Call after [identifyAs]; without a direct road it does nothing.
+     */
+    suspend fun enableTurn(publickey: String, sign: suspend (JsonObject) -> String) {
+        val d = direct ?: return
+        val servers = runCatching { turnCredentials(publickey, sign) }.getOrNull() ?: return
+        if (servers.isNotEmpty()) d.setIceServers(servers + SealedSession.DEFAULT_STUN)
+    }
+
+    /**
+     * A BARE connection shows its traffic in the topbar too (0.27.0), with the road each token goes
+     * by (0.28.0: [useDirect]). The app registers [statsSource] with [DotrinoNetwork] once it is
      * identified, and unregisters it when it closes — [SealedSession] does that by itself for its own.
      */
     fun networkStats(): NetworkStats {
-        val (proxy, peers) = traffic.snapshot({ "proxy" }, { pubkeyOfToken(it) })
+        val (proxy, peers) = traffic.snapshot({ routeOf(it) }, { pubkeyOfToken(it) })
         return NetworkStats(url, app, node, token, !ended.isCompleted && token != null, traffic.since, proxy, peers)
     }
     /** The same object every time, so it can be unregistered. */

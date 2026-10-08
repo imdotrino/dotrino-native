@@ -130,9 +130,12 @@ public enum RemoteAgent {
 
         // The ack is matched by MY ephemeral key, so two sessions opening at once do not take each other's.
         let acked = OneShot<JSON>()
+        // The agent's TOKEN comes with its ack: from then on it is spoken to BY TOKEN, which is the
+        // only thing that goes up to WebRTC (the JS client does the same).
+        let ackFrom = Locked<String?>(nil)
         let off = conn.onMessage { m in
             switch m.payload["type"]?.string {
-            case ack: if m.payload["ack"]?["ceph"]?.string == ephPub { acked.finish(.success(m.payload)) }
+            case ack: if m.payload["ack"]?["ceph"]?.string == ephPub { ackFrom.value = m.from; acked.finish(.success(m.payload)) }
             case errorType: acked.finish(.failure(RemoteAgentError(m.payload["error"]?.string ?? "the agent refused", code: "refused")))
             default: break
             }
@@ -155,7 +158,7 @@ public enum RemoteAgent {
         if !Delegation.samePubkey(a["machine"]?.string, agentPubkey) { throw RemoteAgentError("the ack came from another agent", code: "bad-ack") }
         if a["ceph"]?.string != ephPub || a["sid"]?.string != sid { throw RemoteAgentError("the ack is not for this handshake", code: "bad-ack") }
         guard let seph = a["seph"]?.string else { throw RemoteAgentError("bad ack", code: "bad-ack") }
-        return Session(conn, agentPubkey, sid, try deriveKey(ephPriv, seph, sid))
+        return Session(conn, agentPubkey, sid, try deriveKey(ephPriv, seph, sid), agentToken: ackFrom.value)
     }
 
     /// An open session: domain payloads both ways, sealed with the session key.
@@ -168,9 +171,16 @@ public enum RemoteAgent {
         private var listeners: [UUID: (JSON) -> Void] = [:]
         private var errors: [UUID: (RemoteAgentError) -> Void] = [:]
         private var off: (() -> Void)?
+        private var offEvent: (() -> Void)?
+        /// The agent's token, from its ack; nil = not known (or dead): by pubkey, to the queue.
+        public private(set) var agentToken: String?
 
-        init(_ conn: ProxyConnection, _ agentPubkey: String, _ sid: String, _ key: Data) {
-            self.conn = conn; self.agentPubkey = agentPubkey; self.sid = sid; self.key = key
+        init(_ conn: ProxyConnection, _ agentPubkey: String, _ sid: String, _ key: Data, agentToken: String? = nil) {
+            self.conn = conn; self.agentPubkey = agentPubkey; self.sid = sid; self.key = key; self.agentToken = agentToken
+            // A token dies with its connection (the agent restarted): back to the pubkey until the next ack.
+            offEvent = conn.onEvent { [weak self] e in
+                if case .peerGone(let t, _) = e, let self, self.lock.withLock({ self.agentToken == t }) { self.lock.withLock { self.agentToken = nil } }
+            }
             off = conn.onMessage { [weak self] m in
                 guard let self else { return }
                 switch m.payload["type"]?.string {
@@ -199,13 +209,25 @@ public enum RemoteAgent {
         }
 
         public func send(_ payload: JSON) throws {
-            try conn.sendByPubkey(agentPubkey, ["type": .string(RemoteAgent.dataType), "sid": .string(sid), "env": try RemoteAgent.seal(key, payload)])
+            let msg: JSON = ["type": .string(RemoteAgent.dataType), "sid": .string(sid), "env": try RemoteAgent.seal(key, payload)]
+            // By token as soon as it is known: it goes up to the direct road, and a dead token falls
+            // back to the pubkey by itself. By pubkey only while there is no token.
+            if let t = lock.withLock({ agentToken }) { try conn.sendToOrUpgrade(t, msg, peerPubkey: agentPubkey) }
+            else { try conn.sendByPubkey(agentPubkey, msg) }
         }
 
         /// Stop listening. The session on the agent expires by itself; what the app opened there is the app's to close.
         public func close() {
-            off?(); off = nil
+            off?(); off = nil; offEvent?(); offEvent = nil
             lock.withLock { listeners.removeAll(); errors.removeAll() }
         }
     }
+}
+
+/// A value behind a lock (what a closure captures and another thread sets).
+final class Locked<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var v: T
+    init(_ v: T) { self.v = v }
+    var value: T { get { lock.withLock { v } } set { lock.withLock { v = newValue } } }
 }

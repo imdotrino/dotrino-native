@@ -182,10 +182,13 @@ object RemoteAgent {
 
         // The ack is matched by MY ephemeral key, so two sessions opening at once do not take each other's.
         val acked = CompletableDeferred<JsonObject>()
+        // The agent's TOKEN comes with its ack: from then on it is spoken to BY TOKEN, which is the
+        // only thing that goes up to WebRTC (the JS client does the same).
+        var ackFrom: String? = null
         val off = conn.onMessage { m ->
             val p = m.payload
             when (p["type"]?.jsonPrimitive?.content) {
-                ACK -> if (((p["ack"] as? JsonObject)?.get("ceph") as? JsonPrimitive)?.content == ephPub) acked.complete(p)
+                ACK -> if (((p["ack"] as? JsonObject)?.get("ceph") as? JsonPrimitive)?.content == ephPub) { ackFrom = m.from; acked.complete(p) }
                 ERROR -> acked.completeExceptionally(RemoteAgentError(p["error"]?.jsonPrimitive?.content ?: "the agent refused", "refused"))
             }
         }
@@ -209,7 +212,7 @@ object RemoteAgent {
         if (!Delegation.samePubkey(ack["machine"]?.jsonPrimitive?.content, agentPubkey)) throw RemoteAgentError("the ack came from another agent", "bad-ack")
         if (ack["ceph"]?.jsonPrimitive?.content != ephPub || ack["sid"]?.jsonPrimitive?.content != sid) throw RemoteAgentError("the ack is not for this handshake", "bad-ack")
         val seph = ack["seph"]?.jsonPrimitive?.content ?: throw RemoteAgentError("bad ack", "bad-ack")
-        return Session(conn, agentPubkey, sid, deriveKey(ephPriv, seph, sid))
+        return Session(conn, agentPubkey, sid, deriveKey(ephPriv, seph, sid), ackFrom)
     }
 
     /**
@@ -230,9 +233,13 @@ object RemoteAgent {
         val agentPubkey: String,
         val sid: String,
         private val key: ByteArray,
+        /** The agent's token, from its ack; null = not known (or dead): by pubkey, to the queue. */
+        @Volatile var agentToken: String? = null,
     ) {
         private val listeners = CopyOnWriteArrayList<(JsonObject) -> Unit>()
         private val errors = CopyOnWriteArrayList<(RemoteAgentError) -> Unit>()
+        // A token dies with its connection (the agent restarted): back to the pubkey until the next ack.
+        private val offEvent: () -> Unit = conn.onEvent { e -> if (e is ProxyConnection.Event.PeerGone && e.token == agentToken) agentToken = null }
         private val off: () -> Unit = conn.onMessage { m ->
             val p = m.payload
             when (p["type"]?.jsonPrimitive?.content) {
@@ -251,10 +258,14 @@ object RemoteAgent {
         fun onError(l: (RemoteAgentError) -> Unit): () -> Unit { errors.add(l); return { errors.remove(l) } }
 
         fun send(payload: JsonObject) {
-            conn.sendByPubkey(agentPubkey, buildJsonObject { put("type", DATA); put("sid", sid); put("env", seal(key, payload)) })
+            val msg = buildJsonObject { put("type", DATA); put("sid", sid); put("env", seal(key, payload)) }
+            // By token as soon as it is known: it goes up to the direct road, and a dead token falls
+            // back to the pubkey by itself. By pubkey only while there is no token.
+            val t = agentToken
+            if (t != null) conn.sendToOrUpgrade(t, msg, agentPubkey) else conn.sendByPubkey(agentPubkey, msg)
         }
 
         /** Stop listening. The session on the agent expires by itself; what the app opened there is the app's to close. */
-        fun close() { off(); listeners.clear(); errors.clear() }
+        fun close() { off(); offEvent(); listeners.clear(); errors.clear() }
     }
 }

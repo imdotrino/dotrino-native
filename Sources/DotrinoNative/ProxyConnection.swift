@@ -65,6 +65,8 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// What went to a token and waits to know if that token still exists (`sendToOrElse`).
     private var tokenWatch: [String: (token: String, at: Date, onGone: () -> Void)] = [:]
     private var listeners: [UUID: (Incoming) -> Void] = [:]
+    /// The direct road (`useDirect`), for a connection that no `SealedSession` wraps.
+    private var direct: DirectTransport?
     private var _closed: String?
     public private(set) var token: String?
     /// The proxy node this connection lives on (12 chars), from `connected`.
@@ -155,11 +157,13 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         lock.lock()
         if _closed != nil { lock.unlock(); return }
         _closed = reason
+        let d = direct
         let all = pending.values
         pending.removeAll()
         lock.unlock()
         let e = ProxyError(reason, code: "disconnected")
         ended.finish(.success(reason))
+        d?.closeAll()
         connected.finish(.failure(e))
         all.forEach { $0.finish(.failure(e)) }
         // The session holds its delegate (this object) until invalidated: without this every
@@ -227,6 +231,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             // The greeting is the transport's: answered here, it never reaches the app.
             if payload["t"]?.string == Self.helloTag {
                 if let from = o["from"]?.string { onHello(from, payload) }
+                return
+            }
+            // The direct road's signalling is a transport control frame: to WebRTC, not the app.
+            if payload["t"]?.string == rtcTag {
+                if let d = lock.withLock({ direct }), let from = o["from"]?.string { d.handleSignal(from: from, payload) }
                 return
             }
             let inc = Incoming(from: o["from"]?.string, fromPubkey: o["from_publickey"]?.string, payload: payload,
@@ -332,6 +341,60 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     /// Whose this token is, if someone said it.
     public func pubkeyOfToken(_ t: String) -> String? { lock.withLock { tokenPubkeys[t] } }
+
+    // MARK: the direct road for a BARE connection (0.28.0)
+    //
+    // The transport always prefers the most direct road (CLAUDE.md, 2026-09-03): WebRTC direct,
+    // WebRTC through TURN, and the proxy last. `SealedSession` has this for its own; a connection
+    // used on its own (the terminal's, which carries `RemoteAgent` sessions) gets it here, the
+    // same way: plug the road in, send BY TOKEN, and the first message opens the channel underneath.
+
+    /// Plugs in the direct road (`DotrinoNativeWebRTC`). What `sendToOrUpgrade` sends by token
+    /// prefers an open channel; what arrives through one is delivered like a proxy message.
+    public func useDirect(_ d: DirectTransport) {
+        lock.withLock { direct = d }
+        d.bind(
+            selfToken: { [weak self] in self?.token },
+            signalSend: { [weak self] to, msg in try? self?.sendTo([to], msg) },
+            deliver: { [weak self, weak d] from, text in
+                guard let self else { return }
+                self.traffic.peer(incoming: true, path: d?.route(from) ?? "webrtc", token: from, pubkey: self.pubkeyOfToken(from), bytes: utf8Length(text))
+                guard let payload = try? JSON.parse(text), payload.object != nil else { return }
+                let inc = Incoming(from: from, fromPubkey: self.pubkeyOfToken(from), payload: payload)
+                self.lock.lock(); let ls = Array(self.listeners.values); self.lock.unlock()
+                ls.forEach { $0(inc) }
+            })
+    }
+
+    /// Whether a direct road is plugged in.
+    public var hasDirect: Bool { lock.withLock { direct != nil } }
+
+    /// Where `token` goes NOW (`direct` / `turn` / `webrtc` / `connecting` / `failed`), or nil: the proxy.
+    public func routeOf(_ token: String) -> String? { lock.withLock { direct }?.route(token) }
+
+    /// To ONE token by the best road there is NOW: the open channel, or the proxy — and, knowing
+    /// whose the token is, a dead token (they restarted) sends the same thing by pubkey, to the
+    /// queue. Then it tries to go direct for the next one, without waiting for anybody. The
+    /// `sendToOrQueue` of the JS client.
+    public func sendToOrUpgrade(_ token: String, _ payload: JSON, peerPubkey: String? = nil) throws {
+        let d = lock.withLock { direct }
+        let text = payload.text
+        if let d, d.send(token, text) {
+            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: peerPubkey ?? pubkeyOfToken(token), bytes: utf8Length(text))
+            return
+        }
+        if let pk = peerPubkey { try sendToOrElse(token, payload) { [weak self] in guard let self else { return }; try? self.sendByPubkey(pk, payload, toApp: self.app) } }
+        else { try sendTo([token], payload) }
+        d?.upgrade(token)
+    }
+
+    /// TURN for the direct road: the proxy's credentials for this identity (signed), plus STUN.
+    /// Call after `identifyAs`; without a direct road it does nothing.
+    public func enableTurn(_ publickey: String, sign: (JSON) throws -> String) async {
+        guard let d = lock.withLock({ direct }) else { return }
+        guard let servers = try? await turnCredentials(publickey, sign: sign), !servers.isEmpty else { return }
+        d.setIceServers(servers + IceServer.defaultStun)
+    }
 
     private func onHello(_ from: String, _ msg: JSON) {
         guard let pk = msg["publickey"]?.string, !pk.isEmpty else { return }
@@ -491,12 +554,12 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     }
 }
 
-/// A BARE connection shows its traffic in the topbar too (0.27.0): the road is always the proxy
-/// (WebRTC is `SealedSession`'s). The app registers it with `DotrinoNetwork` once it is identified,
+/// A BARE connection shows its traffic in the topbar too (0.27.0), with the road each token goes
+/// by (0.28.0: `useDirect`). The app registers it with `DotrinoNetwork` once it is identified,
 /// and unregisters it when it closes — `SealedSession` does that by itself for its own.
 extension ProxyConnection: DotrinoNetwork.Source {
     public func networkStats() -> NetworkStats {
-        let (proxy, peers) = traffic.snapshot(routeOf: { _ in "proxy" }, pubkeyOf: { self.pubkeyOfToken($0) })
+        let (proxy, peers) = traffic.snapshot(routeOf: { self.routeOf($0) }, pubkeyOf: { self.pubkeyOfToken($0) })
         return NetworkStats(url: url.absoluteString, app: app, node: node, token: token, connected: closed == nil && token != nil,
                             since: traffic.since, proxy: proxy, peers: peers)
     }
