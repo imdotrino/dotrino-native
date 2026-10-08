@@ -135,9 +135,11 @@ extension NetworkStats {
         out += "  proxy total: in \(NetworkStats.bytes(proxy.bytesIn)) / out \(NetworkStats.bytes(proxy.bytesOut)) (frames \(proxy.framesIn)/\(proxy.framesOut))\n"
         out += "  connections: \(peers.count)\n"
         for p in peers {
-            let who = p.pubkey.map { $0.count > 14 ? "\($0.prefix(6))…\($0.suffix(6))" : $0 } ?? "?"
+            // The device by its ID (`AB12-CD34`, the one the vault shows), never a slice of the JWK;
+            // the token whole (owner, 2026-10-07: nothing to gain by cutting it).
+            let who = p.pubkey.flatMap { try? Delegation.keyLabel($0) } ?? "?"
             out += "  - \(who)"
-            if let t = p.token { out += " (token \(t.count > 10 ? String(t.prefix(8)) + "…" : t))" }
+            if let t = p.token { out += " (token \(t))" }
             out += " | route=\(p.route) | in: \(NetworkStats.paths(p.bytesIn)) | out: \(NetworkStats.paths(p.bytesOut)) | \(p.msgsIn + p.msgsOut) msgs\n"
         }
         return out

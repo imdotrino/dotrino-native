@@ -138,9 +138,11 @@ fun NetworkStats.report(): String {
     sb.append("  proxy total: in ${NetworkReport.bytes(proxy.bytesIn)} / out ${NetworkReport.bytes(proxy.bytesOut)} (frames ${proxy.framesIn}/${proxy.framesOut})\n")
     sb.append("  connections: ${peers.size}\n")
     for (p in peers) {
-        val who = p.pubkey?.let { if (it.length > 14) it.take(6) + "…" + it.takeLast(6) else it } ?: "?"
+        // The device by its ID (`AB12-CD34`, the one the vault shows), never a slice of the JWK;
+        // the token whole (owner, 2026-10-07: nothing to gain by cutting it).
+        val who = p.pubkey?.let { runCatching { Delegation.keyLabel(it) }.getOrNull() } ?: "?"
         sb.append("  - $who")
-        p.token?.let { sb.append(" (token ${if (it.length > 10) it.take(8) + "…" else it})") }
+        p.token?.let { sb.append(" (token $it)") }
         sb.append(" | route=${p.route} | in: ${NetworkReport.paths(p.bytesIn)} | out: ${NetworkReport.paths(p.bytesOut)} | ${p.msgsIn + p.msgsOut} msgs\n")
     }
     return sb.toString()
