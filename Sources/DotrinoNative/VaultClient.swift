@@ -13,6 +13,29 @@ public struct Approval: Equatable, Sendable, Identifiable {
     public let ctxError: String?
 }
 
+/// Something the vault did and tells its approvers about (vaultd ≥ 0.147.0). Today only
+/// `ev == "updated"`: it now runs `version`, and ran `from` before. It asks for nothing.
+public struct VaultNotice: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let ev: String
+    public let version: String
+    public let from: String
+    public let ts: Int64
+
+    public init(id: String, ev: String, version: String, from: String, ts: Int64) {
+        self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
+    }
+
+    /// The `notices` of an `approvals` answer. A vault that does not send the field has no
+    /// notices: that is an older vault, not an error. An entry without `id` or `ev` is dropped.
+    public static func list(from body: JSON) -> [VaultNotice] {
+        (body["notices"]?.array ?? []).compactMap { o in
+            guard let id = o["id"]?.string, let ev = o["ev"]?.string else { return nil }
+            return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0)
+        }
+    }
+}
+
 public struct Grant: Equatable, Sendable, Identifiable {
     public let id: String
     public let ns: String
@@ -168,10 +191,15 @@ public final class VaultClient: @unchecked Sendable {
 
     /// `notify`: whether this device receives request notifications. The vault records it and, to update itself, only asks for approval when some approver can actually find out (vaultd ≥ 0.145.0). `nil` says nothing and changes nothing.
     public func approvals(notify: Bool? = nil) async throws -> [Approval] {
+        try await approvalsWithNotices(notify: notify).items
+    }
+
+    /// The same list, plus the vault's notices (e.g. «I updated myself»): one question, both answers.
+    public func approvalsWithNotices(notify: Bool? = nil) async throws -> (items: [Approval], notices: [VaultNotice]) {
         var data: [String: JSON] = ["op": "approvals"]
         if let notify { data["notify"] = .bool(notify) }
         let body = try await secretsCall(data)
-        return (body["items"]?.array ?? []).compactMap(approvalOf)
+        return ((body["items"]?.array ?? []).compactMap(approvalOf), VaultNotice.list(from: body))
     }
 
     public func approve(_ id: String) async throws { try await answer("approve", id) }

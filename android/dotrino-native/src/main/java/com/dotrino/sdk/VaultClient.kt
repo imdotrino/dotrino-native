@@ -48,6 +48,31 @@ data class Approval(
     val ctxError: String?,
 )
 
+/**
+ * Something the vault did and tells its approvers about (vaultd ≥ 0.147.0). Today only
+ * `ev = "updated"`: it now runs [version], and ran [from] before. It asks for nothing.
+ */
+data class VaultNotice(val id: String, val ev: String, val version: String, val from: String, val ts: Long) {
+    companion object {
+        /**
+         * The `notices` of an `approvals` answer. A vault that does not send the field has no
+         * notices: that is an older vault, not an error. An entry without `id` or `ev` is dropped.
+         */
+        fun listFrom(body: JsonObject): List<VaultNotice> =
+            (body["notices"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { e ->
+                val o = e as? JsonObject ?: return@mapNotNull null
+                fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                VaultNotice(
+                    id = str("id") ?: return@mapNotNull null, ev = str("ev") ?: return@mapNotNull null,
+                    version = str("version") ?: "", from = str("from") ?: "", ts = (o["ts"] as? JsonPrimitive)?.longOrNull ?: 0,
+                )
+            }
+    }
+}
+
+/** What `approvals` answers: the pending requests, and what the vault has to tell. */
+data class ApprovalsAnswer(val items: List<Approval>, val notices: List<VaultNotice>)
+
 data class Grant(val id: String, val ns: String, val deviceId: String, val label: String, val exp: Long, val uses: Long, val ctx: JsonObject?)
 
 class VaultError(message: String, val code: String) : Exception(message)
@@ -157,9 +182,13 @@ class VaultClient(
     }
 
     /** `notify`: whether this device receives request notifications. The vault records it and, to update itself, only asks for approval when some approver can actually find out (vaultd ≥ 0.145.0). `null` says nothing and changes nothing. */
-    suspend fun approvals(notify: Boolean? = null): List<Approval> {
+    suspend fun approvals(notify: Boolean? = null): List<Approval> = approvalsWithNotices(notify).items
+
+    /** The same list, plus the vault's notices (e.g. «I updated myself»): one question, both answers. */
+    suspend fun approvalsWithNotices(notify: Boolean? = null): ApprovalsAnswer {
         val body = secrets(buildJsonObject { put("op", "approvals"); if (notify != null) put("notify", notify) })
-        return (body["items"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { e -> (e as? JsonObject)?.let { approvalOf(it) } }
+        val items = (body["items"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { e -> (e as? JsonObject)?.let { approvalOf(it) } }
+        return ApprovalsAnswer(items, VaultNotice.listFrom(body))
     }
 
     suspend fun approve(id: String) = answer("approve", id)
