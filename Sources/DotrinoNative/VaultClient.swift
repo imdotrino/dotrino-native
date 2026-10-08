@@ -13,17 +13,35 @@ public struct Approval: Equatable, Sendable, Identifiable {
     public let ctxError: String?
 }
 
-/// Something the vault did and tells its approvers about (vaultd ≥ 0.147.0). Today only
-/// `ev == "updated"`: it now runs `version`, and ran `from` before. It asks for nothing.
+/// Something that happened and the vault tells its approvers about (vaultd ≥ 0.147.0). Today only
+/// `ev == "updated"`: something now runs `version`, and ran `from` before. It asks for nothing.
+///
+/// WHO updated: the vault itself when `product` is missing or is the vault's own; otherwise a
+/// device of the record (an agent from npm), named by `label` / `deviceId`.
 public struct VaultNotice: Equatable, Sendable, Identifiable {
+    public static let vaultProduct = "@dotrino/vaultd"
+
     public let id: String
     public let ev: String
     public let version: String
     public let from: String
     public let ts: Int64
+    public let product: String?
+    public let deviceId: String?
+    public let label: String?
 
-    public init(id: String, ev: String, version: String, from: String, ts: Int64) {
+    public init(id: String, ev: String, version: String, from: String, ts: Int64,
+                product: String? = nil, deviceId: String? = nil, label: String? = nil) {
         self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
+        self.product = product; self.deviceId = deviceId; self.label = label
+    }
+
+    /// The device that updated, as it is shown; `nil` when it was the vault itself.
+    public var device: String? {
+        guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil }
+        if let label, !label.isEmpty { return label }
+        if let deviceId, !deviceId.isEmpty { return deviceId }
+        return nil
     }
 
     /// The `notices` of an `approvals` answer. A vault that does not send the field has no
@@ -31,7 +49,8 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
     public static func list(from body: JSON) -> [VaultNotice] {
         (body["notices"]?.array ?? []).compactMap { o in
             guard let id = o["id"]?.string, let ev = o["ev"]?.string else { return nil }
-            return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0)
+            return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0,
+                               product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string)
         }
     }
 }

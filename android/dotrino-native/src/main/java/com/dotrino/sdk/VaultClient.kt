@@ -49,11 +49,24 @@ data class Approval(
 )
 
 /**
- * Something the vault did and tells its approvers about (vaultd ≥ 0.147.0). Today only
- * `ev = "updated"`: it now runs [version], and ran [from] before. It asks for nothing.
+ * Something that happened and the vault tells its approvers about (vaultd ≥ 0.147.0). Today only
+ * `ev = "updated"`: something now runs [version], and ran [from] before. It asks for nothing.
+ *
+ * WHO updated: the vault itself when [product] is missing or is the vault's own; otherwise a
+ * device of the record (an agent from npm), named by [label] / [deviceId].
  */
-data class VaultNotice(val id: String, val ev: String, val version: String, val from: String, val ts: Long) {
+data class VaultNotice(
+    val id: String, val ev: String, val version: String, val from: String, val ts: Long,
+    val product: String? = null, val deviceId: String? = null, val label: String? = null,
+) {
+    /** The device that updated, as it is shown; `null` when it was the vault itself. */
+    val device: String?
+        get() = if (product.isNullOrBlank() || product == VAULT_PRODUCT) null
+        else label?.takeIf { it.isNotBlank() } ?: deviceId?.takeIf { it.isNotBlank() }
+
     companion object {
+        const val VAULT_PRODUCT = "@dotrino/vaultd"
+
         /**
          * The `notices` of an `approvals` answer. A vault that does not send the field has no
          * notices: that is an older vault, not an error. An entry without `id` or `ev` is dropped.
@@ -65,6 +78,7 @@ data class VaultNotice(val id: String, val ev: String, val version: String, val 
                 VaultNotice(
                     id = str("id") ?: return@mapNotNull null, ev = str("ev") ?: return@mapNotNull null,
                     version = str("version") ?: "", from = str("from") ?: "", ts = (o["ts"] as? JsonPrimitive)?.longOrNull ?: 0,
+                    product = str("product"), deviceId = str("deviceId"), label = str("label"),
                 )
             }
     }
