@@ -166,8 +166,11 @@ public final class VaultClient: @unchecked Sendable {
         }
     }
 
-    public func approvals() async throws -> [Approval] {
-        let body = try await secretsCall(["op": "approvals"])
+    /// `notify`: whether this device receives request notifications. The vault records it and, to update itself, only asks for approval when some approver can actually find out (vaultd ≥ 0.145.0). `nil` says nothing and changes nothing.
+    public func approvals(notify: Bool? = nil) async throws -> [Approval] {
+        var data: [String: JSON] = ["op": "approvals"]
+        if let notify { data["notify"] = .bool(notify) }
+        let body = try await secretsCall(data)
         return (body["items"]?.array ?? []).compactMap(approvalOf)
     }
 

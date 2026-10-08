@@ -156,8 +156,9 @@ class VaultClient(
         res["body"] as? JsonObject ?: throw VaultError("the vault answered without a body", "no-body")
     }
 
-    suspend fun approvals(): List<Approval> {
-        val body = secrets(buildJsonObject { put("op", "approvals") })
+    /** `notify`: whether this device receives request notifications. The vault records it and, to update itself, only asks for approval when some approver can actually find out (vaultd ≥ 0.145.0). `null` says nothing and changes nothing. */
+    suspend fun approvals(notify: Boolean? = null): List<Approval> {
+        val body = secrets(buildJsonObject { put("op", "approvals"); if (notify != null) put("notify", notify) })
         return (body["items"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull { e -> (e as? JsonObject)?.let { approvalOf(it) } }
     }
 
