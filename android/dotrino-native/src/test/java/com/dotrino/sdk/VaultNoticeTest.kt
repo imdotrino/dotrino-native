@@ -35,4 +35,14 @@ class VaultNoticeTest {
         assertEquals("@dotrino/terminal-agent", list[0].product)
         assertEquals("AB12-CD34", list[0].deviceId)
     }
+
+    @Test fun anUpdateThatNeedsRootComesWithTheSameFields() {
+        val list = VaultNotice.listFrom(body("""{"notices":[
+            {"id":"r1","ev":"update-needs-root","version":"0.148.0","from":"0.147.0","ts":5},
+            {"id":"r2","ev":"update-needs-root","version":"0.31.0","from":"0.30.0","ts":6,"product":"@dotrino/terminal-agent","deviceId":"AB12-CD34","label":"laptop"}
+        ]}"""))
+        assertEquals(listOf("update-needs-root", "update-needs-root"), list.map { it.ev })
+        assertEquals(listOf("0.148.0", "0.31.0"), list.map { it.version })
+        assertEquals(listOf(null, "laptop"), list.map { it.device })
+    }
 }

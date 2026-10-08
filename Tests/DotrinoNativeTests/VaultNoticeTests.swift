@@ -32,4 +32,17 @@ final class VaultNoticeTests: XCTestCase {
         XCTAssertEqual(list[0].product, "@dotrino/terminal-agent")
         XCTAssertEqual(list[0].deviceId, "AB12-CD34")
     }
+
+    func testAnUpdateThatNeedsRootComesWithTheSameFields() throws {
+        let body = try JSON.parse(#"""
+        {"notices":[
+          {"id":"r1","ev":"update-needs-root","version":"0.148.0","from":"0.147.0","ts":5},
+          {"id":"r2","ev":"update-needs-root","version":"0.31.0","from":"0.30.0","ts":6,"product":"@dotrino/terminal-agent","deviceId":"AB12-CD34","label":"laptop"}
+        ]}
+        """#)
+        let list = VaultNotice.list(from: body)
+        XCTAssertEqual(list.map(\.ev), ["update-needs-root", "update-needs-root"])
+        XCTAssertEqual(list.map(\.version), ["0.148.0", "0.31.0"])
+        XCTAssertEqual(list.map(\.device), [nil, "laptop"])
+    }
 }
