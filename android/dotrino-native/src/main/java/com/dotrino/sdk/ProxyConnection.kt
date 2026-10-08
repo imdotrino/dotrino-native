@@ -255,6 +255,18 @@ class ProxyConnection(
     /** Whose this token is, if someone said it. */
     fun pubkeyOfToken(t: String): String? = tokenPubkeys[t]
 
+    /**
+     * A BARE connection shows its traffic in the topbar too (0.27.0): the road is always the proxy
+     * (WebRTC is [SealedSession]'s). The app registers [statsSource] with [DotrinoNetwork] once it is
+     * identified, and unregisters it when it closes — [SealedSession] does that by itself for its own.
+     */
+    fun networkStats(): NetworkStats {
+        val (proxy, peers) = traffic.snapshot({ "proxy" }, { pubkeyOfToken(it) })
+        return NetworkStats(url, app, node, token, !ended.isCompleted && token != null, traffic.since, proxy, peers)
+    }
+    /** The same object every time, so it can be unregistered. */
+    val statsSource: DotrinoNetwork.Source = DotrinoNetwork.Source { networkStats() }
+
     private fun onHello(from: String, msg: JsonObject) {
         val pk = (msg["publickey"] as? JsonPrimitive)?.content?.takeIf { it.isNotEmpty() } ?: return
         val before = tokenPubkeys[from]

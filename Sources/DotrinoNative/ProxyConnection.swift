@@ -490,3 +490,14 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         return instance
     }
 }
+
+/// A BARE connection shows its traffic in the topbar too (0.27.0): the road is always the proxy
+/// (WebRTC is `SealedSession`'s). The app registers it with `DotrinoNetwork` once it is identified,
+/// and unregisters it when it closes — `SealedSession` does that by itself for its own.
+extension ProxyConnection: DotrinoNetwork.Source {
+    public func networkStats() -> NetworkStats {
+        let (proxy, peers) = traffic.snapshot(routeOf: { _ in "proxy" }, pubkeyOf: { self.pubkeyOfToken($0) })
+        return NetworkStats(url: url.absoluteString, app: app, node: node, token: token, connected: closed == nil && token != nil,
+                            since: traffic.since, proxy: proxy, peers: peers)
+    }
+}
