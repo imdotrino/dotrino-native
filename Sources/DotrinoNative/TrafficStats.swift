@@ -117,3 +117,50 @@ public enum DotrinoNetwork {
 
 /// UTF-8 length of a string.
 func utf8Length(_ s: String) -> Int { s.utf8.count }
+
+// MARK: the report as text (0.29.0)
+//
+// The network sheet has a «Copy» button: this is what it copies, the same lines on the web, on
+// Android and on iOS, so a stats dump can be pasted into a chat and read without the app.
+
+extension NetworkStats {
+    /// One transport, as lines of plain text.
+    public func report() -> String {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        var out = "Proxy \(url)"
+        if let app { out += " | app=\(app)" }
+        if let node { out += " | node=\(node)" }
+        out += connected ? " | connected" : " | disconnected"
+        out += " | since \(f.string(from: since))\n"
+        out += "  proxy total: in \(NetworkStats.bytes(proxy.bytesIn)) / out \(NetworkStats.bytes(proxy.bytesOut)) (frames \(proxy.framesIn)/\(proxy.framesOut))\n"
+        out += "  connections: \(peers.count)\n"
+        for p in peers {
+            let who = p.pubkey.map { $0.count > 14 ? "\($0.prefix(6))…\($0.suffix(6))" : $0 } ?? "?"
+            out += "  - \(who)"
+            if let t = p.token { out += " (token \(t.count > 10 ? String(t.prefix(8)) + "…" : t))" }
+            out += " | route=\(p.route) | in: \(NetworkStats.paths(p.bytesIn)) | out: \(NetworkStats.paths(p.bytesOut)) | \(p.msgsIn + p.msgsOut) msgs\n"
+        }
+        return out
+    }
+
+    /// Every transport of the app, with a header line (what the sheet copies).
+    public static func report(_ all: [NetworkStats]) -> String {
+        let f = ISO8601DateFormatter()
+        var out = "Dotrino network stats · \(f.string(from: Date()))\n"
+        if all.isEmpty { out += "(no transports)\n" }
+        for s in all { out += s.report() }
+        return out
+    }
+
+    static func bytes(_ n: Int64) -> String {
+        let v = Double(n)
+        if v < 1024 { return "\(n) B" }
+        if v < 1024 * 1024 { return String(format: "%.1f KB", v / 1024) }
+        return String(format: "%.2f MB", v / 1024 / 1024)
+    }
+
+    static func paths(_ b: TrafficStats.ByPath) -> String {
+        let parts = [("proxy", b.proxy), ("direct", b.direct), ("turn", b.turn), ("webrtc", b.webrtc)].filter { $0.1 > 0 }.map { "\($0.0) \(bytes($0.1))" }
+        return parts.isEmpty ? "0 B" : parts.joined(separator: ", ")
+    }
+}

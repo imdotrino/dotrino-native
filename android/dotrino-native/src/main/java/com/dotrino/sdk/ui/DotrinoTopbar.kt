@@ -253,10 +253,18 @@ class DotrinoTopbar(
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; tag = "net-body" }
         sheet.column.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(12) })
         sheet.footnote(activity.getString(R.string.dotrino_net_note))
+        var last: List<NetworkStats> = emptyList()
+        // «Copy»: the stats as text, to paste them into a chat (owner, 2026-10-07).
+        sheet.button(activity.getString(R.string.dotrino_net_copy), filled = true) {
+            val cm = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("dotrino-network", com.dotrino.sdk.NetworkReport.of(last)))
+            android.widget.Toast.makeText(activity, activity.getString(R.string.dotrino_net_copied), android.widget.Toast.LENGTH_SHORT).show()
+        }.also { it.tag = "net-copy" }
         sheet.button(activity.getString(R.string.dotrino_support_close)) { sheet.dialog.dismiss() }
         val job = scope.launch {
             while (true) {
                 val all = DotrinoNetwork.sources().mapNotNull { runCatching { it.networkStats() }.getOrNull() }
+                last = all
                 renderNet(body, all)
                 kotlinx.coroutines.delay(1000)
             }

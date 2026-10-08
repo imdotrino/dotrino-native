@@ -15,6 +15,8 @@
 "dotrino_profile_login" = "Sign in";
 "dotrino_profile_logout" = "Sign out";
 "dotrino_profile_unnamed" = "Unnamed profile";
+"dotrino_net_copy" = "Copy";
+"dotrino_net_copied" = "Copied";
 "dotrino_net_cta" = "Network stats";
 "dotrino_net_connected" = "Connected";
 "dotrino_net_disconnected" = "Disconnected";

@@ -269,6 +269,7 @@ private struct NetSheet: View {
     let onClose: () -> Void
     @ObservedObject private var lang = DotrinoLang.shared
     @State private var all: [NetworkStats] = []
+    @State private var copied = false
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private func T(_ k: String) -> String { lang.text(k, in: .module) }
     private func T(_ k: String, _ a: CVarArg) -> String { lang.text(k, in: .module, a) }
@@ -276,8 +277,22 @@ private struct NetSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                Text(T("dotrino_net_cta")).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
-                    .frame(maxWidth: .infinity).padding(.bottom, 8)
+                HStack {
+                    Text(T("dotrino_net_cta")).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
+                    Spacer()
+                    // «Copy»: the stats as text, to paste them into a chat (owner, 2026-10-07).
+                    Button {
+                        UIPasteboard.general.string = NetworkStats.report(all)
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                    } label: {
+                        Text(T(copied ? "dotrino_net_copied" : "dotrino_net_copy")).font(.footnote.weight(.semibold)).foregroundColor(DotrinoPalette.fg)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(DotrinoPalette.muted.opacity(0.6)))
+                    }
+                    .accessibilityIdentifier("net-copy")
+                }
+                .padding(.bottom, 8)
                 if all.isEmpty { Text(T("dotrino_net_none")).foregroundColor(DotrinoPalette.muted) }
                 ForEach(Array(all.enumerated()), id: \.offset) { _, s in transport(s) }
                 Text(T("dotrino_net_note")).font(.caption).foregroundColor(DotrinoPalette.muted).padding(.top, 8)

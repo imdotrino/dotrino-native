@@ -121,3 +121,49 @@ object DotrinoNetwork {
     /** Called when a transport comes or goes. */
     fun onChange(l: () -> Unit): () -> Unit { listeners.add(l); return { listeners.remove(l) } }
 }
+
+// ---- the report as text (0.29.0) ----
+//
+// The network sheet has a «Copy» button: this is what it copies, the same lines on the web, on
+// Android and on iOS, so a stats dump can be pasted into a chat and read without the app.
+
+/** One transport, as lines of plain text. */
+fun NetworkStats.report(): String {
+    val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+    val sb = StringBuilder("Proxy $url")
+    if (app != null) sb.append(" | app=$app")
+    if (node != null) sb.append(" | node=$node")
+    sb.append(if (connected) " | connected" else " | disconnected")
+    sb.append(" | since ${time.format(java.util.Date(since))}\n")
+    sb.append("  proxy total: in ${NetworkReport.bytes(proxy.bytesIn)} / out ${NetworkReport.bytes(proxy.bytesOut)} (frames ${proxy.framesIn}/${proxy.framesOut})\n")
+    sb.append("  connections: ${peers.size}\n")
+    for (p in peers) {
+        val who = p.pubkey?.let { if (it.length > 14) it.take(6) + "…" + it.takeLast(6) else it } ?: "?"
+        sb.append("  - $who")
+        p.token?.let { sb.append(" (token ${if (it.length > 10) it.take(8) + "…" else it})") }
+        sb.append(" | route=${p.route} | in: ${NetworkReport.paths(p.bytesIn)} | out: ${NetworkReport.paths(p.bytesOut)} | ${p.msgsIn + p.msgsOut} msgs\n")
+    }
+    return sb.toString()
+}
+
+object NetworkReport {
+    /** Every transport of the app, with a header line (what the sheet copies). */
+    fun of(all: List<NetworkStats>): String {
+        val iso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        val sb = StringBuilder("Dotrino network stats · ${iso.format(java.util.Date())}\n")
+        if (all.isEmpty()) sb.append("(no transports)\n")
+        for (s in all) sb.append(s.report())
+        return sb.toString()
+    }
+
+    fun bytes(n: Long): String = when {
+        n < 1024 -> "$n B"
+        n < 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f KB", n / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.2f MB", n / 1024.0 / 1024.0)
+    }
+
+    fun paths(b: TrafficStats.ByPath): String {
+        val parts = listOf("proxy" to b.proxy, "direct" to b.direct, "turn" to b.turn, "webrtc" to b.webrtc).filter { it.second > 0 }.map { "${it.first} ${bytes(it.second)}" }
+        return if (parts.isEmpty()) "0 B" else parts.joinToString(", ")
+    }
+}

@@ -29,6 +29,8 @@
     <string name="dotrino_profile_unnamed">Unnamed profile</string>
     <string name="dotrino_profiles_loading">Loading your profiles…</string>
     <string name="dotrino_profiles_error">Could not read your profiles (%1$s).</string>
+    <string name="dotrino_net_copy">Copy</string>
+    <string name="dotrino_net_copied">Copied</string>
     <string name="dotrino_net_cta">Network stats</string>
     <string name="dotrino_net_connected">Connected</string>
     <string name="dotrino_net_disconnected">Disconnected</string>
