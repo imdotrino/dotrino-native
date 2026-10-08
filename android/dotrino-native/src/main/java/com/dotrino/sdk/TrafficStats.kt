@@ -44,17 +44,22 @@ class TrafficStats {
         p.lastAt = System.currentTimeMillis()
     }
 
-    /** A copy to show. [routeOf]: where each token goes NOW; [pubkeyOf]: whose a token is. */
-    @Synchronized fun snapshot(routeOf: (String) -> String?, pubkeyOf: (String) -> String?): Pair<NetworkStats.Proxy, List<NetworkStats.Peer>> {
-        val proxy = NetworkStats.Proxy(proxyIn, proxyOut, framesIn, framesOut)
-        val list = peers.values.map { p ->
-            NetworkStats.Peer(
-                token = p.token,
-                pubkey = p.pubkey ?: p.token?.let(pubkeyOf),
-                route = p.token?.let(routeOf) ?: "proxy",
-                bytesIn = p.bytesIn.copy(), bytesOut = p.bytesOut.copy(),
-                msgsIn = p.msgsIn, msgsOut = p.msgsOut, lastAt = p.lastAt,
-            )
+    /**
+     * A copy to show. [routeOf]: where each token goes NOW; [pubkeyOf]: whose a token is.
+     *
+     * The copy is taken under the lock and [routeOf] is asked OUTSIDE it: asking WebRTC for a
+     * channel's state goes through its signalling thread, and that thread counts traffic here
+     * ([peer]) — with the lock held, the two waited for each other and the app froze the second
+     * time the network sheet opened (0.28.1).
+     */
+    fun snapshot(routeOf: (String) -> String?, pubkeyOf: (String) -> String?): Pair<NetworkStats.Proxy, List<NetworkStats.Peer>> {
+        val (proxy, copy) = synchronized(this) {
+            NetworkStats.Proxy(proxyIn, proxyOut, framesIn, framesOut) to peers.values.map { p ->
+                NetworkStats.Peer(p.token, p.pubkey, "proxy", p.bytesIn.copy(), p.bytesOut.copy(), p.msgsIn, p.msgsOut, p.lastAt)
+            }
+        }
+        val list = copy.map { p ->
+            p.copy(pubkey = p.pubkey ?: p.token?.let(pubkeyOf), route = p.token?.let(routeOf) ?: "proxy")
         }.sortedByDescending { it.lastAt }
         return proxy to list
     }
