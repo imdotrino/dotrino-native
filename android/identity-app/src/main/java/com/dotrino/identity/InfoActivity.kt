@@ -52,7 +52,7 @@ class InfoActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(getColor(com.dotrino.sdk.R.color.dotrino_bg))
             fitsSystemWindows = true
-            addView(DotrinoTopbar(this@InfoActivity, repo = "imdotrino/dotrino-native") {
+            addView(DotrinoTopbar(this@InfoActivity, repo = "imdotrino/dotrino-native", showProfile = false) {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DotrinoTopbar.HOME)))
             }.view)
             addView(ScrollView(this@InfoActivity).apply { addView(body) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))

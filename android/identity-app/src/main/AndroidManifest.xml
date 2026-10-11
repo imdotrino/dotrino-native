@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- ESTA APP NO SE CONECTA A INTERNET NI USA LA CÁMARA, y lo dice la política publicada. La
+         librería los pide para las demás apps (el proxio, leer un QR): aquí se quitan. Su
+         pantalla va sin botón de perfil, que es lo único que abriría una página web. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
 
     <!-- Solo lo usan apps firmadas con la MISMA llave que esta: las de Dotrino. -->
     <permission
