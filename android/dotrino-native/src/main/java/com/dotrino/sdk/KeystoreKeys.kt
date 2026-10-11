@@ -19,7 +19,7 @@ import javax.crypto.KeyAgreement
  * One pair per account, named after it (`dotrino.<id>.sign` / `.enc`), so accounts never
  * share a key: removing one account deletes exactly its keys.
  */
-class KeystoreKeys private constructor(private val id: String) : DeviceKeys {
+class KeystoreKeys private constructor(private val id: String) : PhoneKey {
     companion object {
         private const val STORE = "AndroidKeyStore"
         private fun signAlias(id: String) = "dotrino.$id.sign"
@@ -67,7 +67,7 @@ class KeystoreKeys private constructor(private val id: String) : DeviceKeys {
     override suspend fun sign(text: String): String = signBytes(text.toByteArray(Charsets.UTF_8))
 
     /** Signs raw bytes (what the identity of the WebView asks for) → P1363 (r‖s) in base64. */
-    fun signBytes(bytes: ByteArray): String {
+    override fun signBytes(bytes: ByteArray): String {
         val s = Signature.getInstance("SHA256withECDSA")
         s.initSign(priv(signAlias(id)))
         s.update(bytes)

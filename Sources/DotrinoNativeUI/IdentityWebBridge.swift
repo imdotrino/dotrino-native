@@ -68,9 +68,9 @@ public final class IdentityWebBridge: NSObject, WKScriptMessageHandlerWithReply 
         }
     }
 
-    private static func keys(_ kid: String) throws -> EnclaveKeys {
-        guard EnclaveKeys.exists(kid) else { throw BridgeError(description: "that key is not on this phone", code: "native-key-gone") }
-        return try EnclaveKeys.open(kid)
+    private static func keys(_ kid: String) throws -> DeviceKeys {
+        guard PhoneKeys.exists(kid) else { throw BridgeError(description: "that key is not on this phone", code: "native-key-gone") }
+        return try PhoneKeys.open(kid)
     }
 
     private static func str(_ p: JSON, _ k: String) throws -> String {
@@ -83,6 +83,17 @@ public final class IdentityWebBridge: NSObject, WKScriptMessageHandlerWithReply 
         case "create":
             let kid = UUID().uuidString.lowercased()
             let k = try EnclaveKeys.create(kid)
+            return ["kid": .string(kid), "publickey": .string(k.publickey), "encPub": .string(k.encPub)]
+        case "import":
+            // An account opened with user and password: its key lives in the vault, which hands
+            // it over. It cannot go in the enclave, so it is kept sealed under an enclave key.
+            let kid = UUID().uuidString.lowercased()
+            guard let sign = p["sign"], sign.object != nil, let enc = p["enc"], enc.object != nil else {
+                throw BridgeError(description: "import: missing sign or enc", code: "native-bad-request")
+            }
+            let k: ImportedKeys
+            do { k = try ImportedKeys.import(kid, sign: sign, enc: enc, publickey: str(p, "publickey"), encPub: str(p, "encPub")) }
+            catch let e as CryptoError { throw BridgeError(description: "import: \(e)", code: "native-bad-key") }
             return ["kid": .string(kid), "publickey": .string(k.publickey), "encPub": .string(k.encPub)]
         case "open":
             let kid = try str(p, "kid")

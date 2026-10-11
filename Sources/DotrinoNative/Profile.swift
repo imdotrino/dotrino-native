@@ -218,7 +218,7 @@ extension Profile {
     /// The profile of THIS phone: the identity's store and its chip keys, shared by every
     /// Dotrino app of the team (`SharedStorage.share` first). `no-profile` when there is none.
     public static func fromPhone() throws -> Profile {
-        try load(try IdentityStore.shared.all()) { try EnclaveKeys.open($0) }
+        try load(try IdentityStore.shared.all()) { try PhoneKeys.open($0) }
     }
 
     /// The app's TRANSPORT key: it signs this app's channel entries (`proxy-client`'s own

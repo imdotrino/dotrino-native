@@ -66,6 +66,6 @@ public final class AccountStore: @unchecked Sendable {
     public func remove(_ id: String) throws {
         sealed.lock.lock(); defer { sealed.lock.unlock() }
         try write(read().filter { $0.id != id })
-        EnclaveKeys.delete(id)
+        PhoneKeys.delete(id)
     }
 }

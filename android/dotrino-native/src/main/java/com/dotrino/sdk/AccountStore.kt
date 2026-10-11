@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
  * [IdentityClient].
  */
 class AccountStore(context: Context) {
+    private val app = context.applicationContext
     private val sealed = SealedFile(context, "dotrino-accounts.bin", "dotrino.accounts")
     private val json = Json { ignoreUnknownKeys = true }
     private val ser = ListSerializer(Account.serializer())
@@ -26,6 +27,6 @@ class AccountStore(context: Context) {
 
     @Synchronized fun remove(id: String) {
         write(list().filter { it.id != id })
-        KeystoreKeys.delete(id)
+        PhoneKeys.delete(app, id)
     }
 }

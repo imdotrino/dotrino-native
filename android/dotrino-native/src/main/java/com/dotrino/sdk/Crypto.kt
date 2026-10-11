@@ -65,6 +65,10 @@ object Crypto {
         return KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(ECPoint(x, y), p256)) as ECPublicKey
     }
 
+    /** A P-256 private key from its scalar (the `d` of a JWK, base64url). */
+    fun privateKeyOf(d: String): java.security.PrivateKey =
+        KeyFactory.getInstance("EC").generatePrivate(java.security.spec.ECPrivateKeySpec(BigInteger(1, fromB64url(d)), p256))
+
     private fun unsigned32(n: BigInteger): ByteArray {
         val b = n.toByteArray()
         return when {

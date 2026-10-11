@@ -6,7 +6,10 @@ import com.dotrino.sdk.AccountStore
 import com.dotrino.sdk.Crypto
 import com.dotrino.sdk.Delegation
 import com.dotrino.sdk.IdentityStore
+import com.dotrino.sdk.ImportedKeys
 import com.dotrino.sdk.KeystoreKeys
+import com.dotrino.sdk.PhoneKey
+import com.dotrino.sdk.PhoneKeys
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -31,9 +34,9 @@ class IdentityHost(context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** The key [kid], or the error the caller shows: no other key is ever made in its place. */
-    private fun keys(kid: String): KeystoreKeys {
-        if (!KeystoreKeys.exists(kid)) throw HostError("that key is not on this phone", "native-key-gone")
-        return KeystoreKeys.open(kid)
+    private fun keys(kid: String): PhoneKey {
+        if (!PhoneKeys.exists(app, kid)) throw HostError("that key is not on this phone", "native-key-gone")
+        return PhoneKeys.open(app, kid)
     }
 
     private fun JsonObject.str(k: String): String =
@@ -43,6 +46,16 @@ class IdentityHost(context: Context) {
         "create" -> {
             val kid = UUID.randomUUID().toString()
             val k = KeystoreKeys.create(kid)
+            buildJsonObject { put("kid", kid); put("publickey", k.publickey); put("encPub", k.encPub) }
+        }
+        "import" -> {
+            // An account opened with user and password: its key lives in the vault, which hands
+            // it over. It cannot go in the chip, so it is kept sealed under a chip key.
+            val kid = UUID.randomUUID().toString()
+            val sign = p["sign"] as? JsonObject ?: throw HostError("import: missing sign", "native-bad-request")
+            val enc = p["enc"] as? JsonObject ?: throw HostError("import: missing enc", "native-bad-request")
+            val k = try { ImportedKeys.import(app, kid, sign, enc, p.str("publickey"), p.str("encPub")) }
+            catch (e: IllegalArgumentException) { throw HostError("import: ${e.message}", "native-bad-key") }
             buildJsonObject { put("kid", kid); put("publickey", k.publickey); put("encPub", k.encPub) }
         }
         "open" -> {
@@ -80,7 +93,7 @@ class IdentityHost(context: Context) {
         "accounts" -> buildJsonObject { put("items", JsonArray(accounts.list().map { json.encodeToJsonElement(Account.serializer(), it) })) }
         "accountSave" -> {
             val a = json.decodeFromJsonElement(Account.serializer(), p["account"] ?: throw HostError("missing account", "native-bad-request"))
-            if (!KeystoreKeys.exists(a.id)) throw HostError("that account's key is not on this phone", "native-key-gone")
+            if (!PhoneKeys.exists(app, a.id)) throw HostError("that account's key is not on this phone", "native-key-gone")
             accounts.save(a)
             buildJsonObject { put("ok", true) }
         }
