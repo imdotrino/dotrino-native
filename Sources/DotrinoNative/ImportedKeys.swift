@@ -46,10 +46,18 @@ public final class ImportedKeys: DeviceKeys, @unchecked Sendable {
     public static func exists(_ id: String) -> Bool { Keychain.exists(alias(id)) }
 
     /// Keeps the pair for [id]. `sign` and `enc` are the private JWKs; `publickey` and `encPub`
-    /// are the public halves EXACTLY as the account record writes them.
+    /// are the public halves EXACTLY as the account record writes them. Without `enc`, a new
+    /// encryption key is made.
     @discardableResult
-    public static func `import`(_ id: String, sign: JSON, enc: JSON, publickey: String, encPub: String) throws -> ImportedKeys {
+    public static func `import`(_ id: String, sign: JSON, enc enc0: JSON?, publickey: String, encPub encPub0: String?) throws -> ImportedKeys {
         if exists(id) || EnclaveKeys.exists(id) { throw CryptoError("keys for \(id) already exist") }
+        // A vault that hands over no encryption key: a new one is made here, as the browser does.
+        let enc: JSON, encPub: String
+        if let e = enc0, let p = encPub0 { enc = e; encPub = p } else {
+            let fresh = P256.KeyAgreement.PrivateKey()
+            enc = ["kty": "EC", "crv": "P-256", "d": .string(Crypto.b64url(fresh.rawRepresentation))]
+            encPub = Crypto.jwk(raw: fresh.publicKey.rawRepresentation)
+        }
         let k = try ImportedKeys(sign: sign, enc: enc, publickey: publickey, encPub: encPub)
         let plain: JSON = ["sign": sign, "enc": enc, "publickey": .string(publickey), "encPub": .string(encPub)]
         let wrap = try EnclaveKeys.create(wrapId(id))

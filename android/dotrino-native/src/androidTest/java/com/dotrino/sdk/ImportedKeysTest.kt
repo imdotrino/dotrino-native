@@ -80,6 +80,16 @@ class ImportedKeysTest {
         assertFalse(PhoneKeys.exists(ctx, id))
     }
 
+    @Test fun withoutAnEncryptionKeyANewOneIsMade() = runBlocking<Unit> {
+        val s = pair()
+        val k = ImportedKeys.import(ctx, id, privJwk(s), null, Crypto.jwkOf(s.public as ECPublicKey), null)
+        val again = PhoneKeys.open(ctx, id)
+        assertEquals(k.encPub, again.encPub)
+        val peer = pair()
+        val theirs = KeyAgreement.getInstance("ECDH").apply { init(peer.private); doPhase(Crypto.publicKeyOf(k.encPub), true) }.generateSecret()
+        assertArrayEquals(theirs, again.agree(peer.public))
+    }
+
     @Test fun deletingTheAccountDeletesItsKey() {
         val s = pair(); val e = pair()
         ImportedKeys.import(ctx, id, privJwk(s), privJwk(e), Crypto.jwkOf(s.public as ECPublicKey), Crypto.jwkOf(e.public as ECPublicKey))

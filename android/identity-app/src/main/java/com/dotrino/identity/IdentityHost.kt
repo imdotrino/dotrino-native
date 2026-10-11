@@ -53,8 +53,8 @@ class IdentityHost(context: Context) {
             // it over. It cannot go in the chip, so it is kept sealed under a chip key.
             val kid = UUID.randomUUID().toString()
             val sign = p["sign"] as? JsonObject ?: throw HostError("import: missing sign", "native-bad-request")
-            val enc = p["enc"] as? JsonObject ?: throw HostError("import: missing enc", "native-bad-request")
-            val k = try { ImportedKeys.import(app, kid, sign, enc, p.str("publickey"), p.str("encPub")) }
+            // `enc` is optional: a vault that hands over no encryption key gets a new one here.
+            val k = try { ImportedKeys.import(app, kid, sign, p["enc"] as? JsonObject, p.str("publickey"), p["encPub"]?.jsonPrimitive?.content) }
             catch (e: IllegalArgumentException) { throw HostError("import: ${e.message}", "native-bad-key") }
             buildJsonObject { put("kid", kid); put("publickey", k.publickey); put("encPub", k.encPub) }
         }

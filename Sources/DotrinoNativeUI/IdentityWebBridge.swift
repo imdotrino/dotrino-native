@@ -88,11 +88,13 @@ public final class IdentityWebBridge: NSObject, WKScriptMessageHandlerWithReply 
             // An account opened with user and password: its key lives in the vault, which hands
             // it over. It cannot go in the enclave, so it is kept sealed under an enclave key.
             let kid = UUID().uuidString.lowercased()
-            guard let sign = p["sign"], sign.object != nil, let enc = p["enc"], enc.object != nil else {
-                throw BridgeError(description: "import: missing sign or enc", code: "native-bad-request")
+            guard let sign = p["sign"], sign.object != nil else {
+                throw BridgeError(description: "import: missing sign", code: "native-bad-request")
             }
+            // `enc` is optional: a vault that hands over no encryption key gets a new one here.
+            let enc = p["enc"].flatMap { $0.object != nil ? $0 : nil }
             let k: ImportedKeys
-            do { k = try ImportedKeys.import(kid, sign: sign, enc: enc, publickey: str(p, "publickey"), encPub: str(p, "encPub")) }
+            do { k = try ImportedKeys.import(kid, sign: sign, enc: enc, publickey: str(p, "publickey"), encPub: p["encPub"]?.string) }
             catch let e as CryptoError { throw BridgeError(description: "import: \(e)", code: "native-bad-key") }
             return ["kid": .string(kid), "publickey": .string(k.publickey), "encPub": .string(k.encPub)]
         case "open":

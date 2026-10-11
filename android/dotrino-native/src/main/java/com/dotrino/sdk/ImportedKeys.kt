@@ -44,10 +44,17 @@ class ImportedKeys private constructor(
         /**
          * Keeps the pair for [id]. [sign] and [enc] are the private JWKs; [publickey] and [encPub]
          * are the public halves EXACTLY as the account record writes them. Refused unless each
-         * private key really is the pair of its public one.
+         * private key really is the pair of its public one. Without [enc0], a new encryption key
+         * is made.
          */
-        fun import(context: Context, id: String, sign: JsonObject, enc: JsonObject, publickey: String, encPub: String): ImportedKeys {
+        fun import(context: Context, id: String, sign: JsonObject, enc0: JsonObject?, publickey: String, encPub0: String?): ImportedKeys {
             check(!exists(context, id) && !KeystoreKeys.exists(id)) { "keys for $id already exist" }
+            // A vault that hands over no encryption key: a new one is made here, as the browser does.
+            val (enc, encPub) = if (enc0 != null && encPub0 != null) enc0 to encPub0 else {
+                val p = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+                buildJsonObject { put("kty", "EC"); put("crv", "P-256"); put("d", Crypto.scalarOf(p.private as java.security.interfaces.ECPrivateKey)) } to
+                    Crypto.jwkOf(p.public as java.security.interfaces.ECPublicKey)
+            }
             val k = build(sign, enc, publickey, encPub)
             sealed(context, id).write(buildJsonObject {
                 put("sign", sign); put("enc", enc); put("publickey", publickey); put("encPub", encPub)
