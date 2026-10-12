@@ -63,9 +63,20 @@ public final class AccountStore: @unchecked Sendable {
         try write(read().filter { $0.id != a.id } + [a])
     }
 
+    /// Called after an account is removed, from whoever removed it (the app's own screen or
+    /// the identity's page). The app uses it to stop the rings of that account (`prunePush`):
+    /// its key is gone, so the account itself cannot ask for it any more.
+    public var onRemoved: ((Account) -> Void)?
+
     public func remove(_ id: String) throws {
-        sealed.lock.lock(); defer { sealed.lock.unlock() }
-        try write(read().filter { $0.id != id })
-        PhoneKeys.delete(id)
+        let gone: [Account]
+        do {
+            sealed.lock.lock(); defer { sealed.lock.unlock() }
+            let all = try read()
+            gone = all.filter { $0.id == id }
+            try write(all.filter { $0.id != id })
+            PhoneKeys.delete(id)
+        }
+        gone.forEach { onRemoved?($0) }
     }
 }

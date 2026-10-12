@@ -3,6 +3,7 @@ package com.dotrino.sdk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -464,6 +465,25 @@ class ProxyConnection(
             if (app != null) put("app", app)   // inside what is signed: which app gets the ring
         }
         request(buildJsonObject { put("type", "push-subscribe"); put("data", data); put("signature", sign(data)) })
+    }
+
+    /**
+     * `push-prune`: this phone's push token says which identities it STILL has, and the proxy
+     * drops its other subscriptions (of this app). It is how an account that was removed stops
+     * ringing: its key went with it, so nothing can sign a `push-unsubscribe` any more. Not
+     * signed — knowing the token is what allows it, and all it does is stop ringing that token.
+     * Returns how many subscriptions the proxy dropped.
+     */
+    suspend fun prunePush(fcmToken: String, keep: List<String>): Int {
+        val res = request(buildJsonObject {
+            put("type", "push-prune"); put("target", fcmToken)
+            put("keep", JsonArray(keep.map { JsonPrimitive(it) }))
+            if (app != null) put("app", app)
+        })
+        if (res["type"]?.jsonPrimitive?.content != "push-pruned") {
+            throw ProxyError(res["error"]?.jsonPrimitive?.content ?: "the proxy did not prune", res["code"]?.jsonPrimitive?.content ?: "push-prune-failed")
+        }
+        return res["removed"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
     }
 
     /** Registers this phone's FCM token under my key: the proxy rings it when something is queued for me. */

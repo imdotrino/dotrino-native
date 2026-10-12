@@ -511,6 +511,22 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         try await request(["type": "push-subscribe", "data": data, "signature": .string(try sign(data))])
     }
 
+    /// `push-prune`: this phone's push token says which identities it STILL has, and the proxy
+    /// drops its other subscriptions (of this app). It is how an account that was removed stops
+    /// ringing: its key went with it, so nothing can sign a `push-unsubscribe` any more. Not
+    /// signed — knowing the token is what allows it, and all it does is stop ringing that token.
+    /// Returns how many subscriptions the proxy dropped.
+    @discardableResult
+    public func prunePush(token: String, keep: [String]) async throws -> Int {
+        var f: [String: JSON] = ["type": "push-prune", "target": .string(token), "keep": .array(keep.map { .string($0) })]
+        if let app { f["app"] = .string(app) }
+        let res = try await request(f)
+        guard res["type"]?.string == "push-pruned" else {
+            throw ProxyError(res["error"]?.string ?? "the proxy did not prune", code: res["code"]?.string ?? "push-prune-failed")
+        }
+        return res["removed"]?.int.map(Int.init) ?? 0
+    }
+
     public func turnCredentials(_ publickey: String, sign: (JSON) throws -> String) async throws -> [IceServer] {
         let data: JSON = ["op": "turn-credentials", "publickey": .string(publickey), "ts": .int(nowMs())]
         let res = try await request(["type": "turn-credentials", "data": data, "signature": .string(try sign(data))])
