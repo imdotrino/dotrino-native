@@ -205,6 +205,12 @@ class Profile private constructor(
         return Crypto.decryptWithCek(Crypto.openWrap(w, keys), envelope)
     }
 
+    /**
+     * Does the record give THIS device the permission [cap] (`passwords`, `approve`…)? Without
+     * a record there is no permission to read: a profile of one device has no vault to ask.
+     */
+    fun can(cap: String): Boolean = Acta.memberCan(acta, publickey, cap, renounces)
+
     /** May this device sign for the profile? No acta = a profile of one device, which signs. */
     val canSign: Boolean get() = acta == null || Acta.memberCan(acta, publickey, "sign", renounces)
 

@@ -188,6 +188,10 @@ public final class Profile: @unchecked Sendable {
     /// `encKeyId` of the identity: the first 16 hex of the key's id.
     public static func encKeyId(_ encPub: String) throws -> String { String(try Delegation.pubkeyId(encPub).prefix(16)) }
 
+    /// Does the record give THIS device the permission `cap` (`passwords`, `approve`…)? Without
+    /// a record there is no permission to read: a profile of one device has no vault to ask.
+    public func can(_ cap: String) -> Bool { Acta.memberCan(acta, publickey, cap, renounces) }
+
     /// May this device sign for the profile? No acta = a profile of one device, which signs.
     public var canSign: Bool { acta == nil || Acta.memberCan(acta, publickey, "sign", renounces) }
 
