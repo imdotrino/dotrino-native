@@ -178,6 +178,23 @@ class Profile private constructor(
         return null
     }
 
+    /**
+     * `openSealedValue` of the identity: a value sealed to THIS device — its wrap of the
+     * content key, then the envelope. The encryption private key stays where it lives.
+     */
+    suspend fun openSealed(wrap: JsonObject, envelope: JsonObject): String = Crypto.openSealed(wrap, envelope, keys)
+
+    /**
+     * The ENCRYPTION key of the vault this profile is paired with, to seal what is asked of
+     * it. It comes from the record, like any member's. Null = not paired, or the vault has
+     * not published one yet.
+     */
+    val vaultEncPub: String? get() {
+        val master = vault?.master ?: return null
+        val m = (acta?.get("members") as? JsonArray)?.firstOrNull { ((it as? JsonObject)?.get("pub") as? JsonPrimitive)?.content == master } as? JsonObject
+        return (m?.get("encPub") as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
+    }
+
     /** `decryptWithKeyring`: content encrypted with any generation this device holds. */
     suspend fun decryptWithKeyring(envelope: JsonObject): String {
         val gen = (envelope["gen"] as? JsonPrimitive)?.content?.toIntOrNull()

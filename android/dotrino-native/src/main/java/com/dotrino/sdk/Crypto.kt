@@ -143,6 +143,26 @@ object Crypto {
         }
     }
 
+    /** `makeContentKey` of the pilar: a fresh AES-256 key, as base64. */
+    fun makeContentKey(): String = b64(randomBytes(32))
+
+    /**
+     * `wrapForMember` of the pilar (`vault/content.js`): the content key wrapped to ONE
+     * member with an ephemeral ECDH key, so only the holder of that member's encryption
+     * private key opens it ([openWrap]). The ephemeral private half is dropped here.
+     */
+    fun wrapForMember(cek: String, memberEncPub: String): JsonObject {
+        require(cek.isNotEmpty()) { "wrapForMember: missing content key" }
+        require(memberEncPub.isNotEmpty()) { "wrapForMember: member has no encryption key" }
+        val eph = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        val secret = javax.crypto.KeyAgreement.getInstance("ECDH").run { init(eph.private); doPhase(publicKeyOf(memberEncPub), true); generateSecret() }
+        val (iv, ct) = aesGcmSeal(secret, cek.toByteArray(Charsets.UTF_8))
+        return kotlinx.serialization.json.buildJsonObject {
+            put("epk", kotlinx.serialization.json.JsonPrimitive(jwkOf(eph.public as ECPublicKey)))
+            put("iv", kotlinx.serialization.json.JsonPrimitive(b64(iv))); put("ct", kotlinx.serialization.json.JsonPrimitive(b64(ct)))
+        }
+    }
+
     /** What the vault seals to the approver (the command of a request): a wrap plus an envelope. */
     suspend fun openSealed(wrap: JsonObject, envelope: JsonObject, keys: DeviceKeys): String =
         decryptWithCek(openWrap(wrap, keys), envelope)

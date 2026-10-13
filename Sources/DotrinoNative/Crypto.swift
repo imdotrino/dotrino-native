@@ -93,6 +93,22 @@ public enum Crypto {
         return try utf8(aesGcmOpen(key: fromB64(cek), iv: fromB64(iv), ct: fromB64(ct)))
     }
 
+    /// `makeContentKey` of the pilar: a fresh AES-256 key, as base64.
+    public static func makeContentKey() -> String { b64(randomBytes(32)) }
+
+    /// `wrapForMember` of the pilar (`vault/content.js`): the content key wrapped to ONE
+    /// member with an ephemeral ECDH key, so only the holder of that member's encryption
+    /// private key opens it (`openWrap`). The ephemeral private half is dropped here.
+    public static func wrapForMember(_ cek: String, memberEncPub: String) throws -> JSON {
+        guard !cek.isEmpty else { throw CryptoError("wrapForMember: missing content key") }
+        guard !memberEncPub.isEmpty else { throw CryptoError("wrapForMember: member has no encryption key") }
+        let eph = P256.KeyAgreement.PrivateKey()
+        let shared = try eph.sharedSecretFromKeyAgreement(with: agreementKey(jwk: memberEncPub))
+        let secret = shared.withUnsafeBytes { Data($0) }
+        let (iv, ct) = try aesGcmSeal(key: secret, plain: Data(cek.utf8))
+        return ["epk": .string(jwk(raw: eph.publicKey.rawRepresentation)), "iv": .string(b64(iv)), "ct": .string(b64(ct))]
+    }
+
     /// What the vault seals to the approver (the command of a request): a wrap plus an envelope.
     public static func openSealed(wrap: JSON, envelope: JSON, keys: DeviceKeys) throws -> String {
         try decryptWithCek(openWrap(wrap, keys: keys), envelope: envelope)

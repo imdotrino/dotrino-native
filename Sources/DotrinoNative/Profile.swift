@@ -81,6 +81,22 @@ public final class Profile: @unchecked Sendable {
         return nil
     }
 
+    /// `openSealedValue` of the identity: a value sealed to THIS device — its wrap of the
+    /// content key, then the envelope. The encryption private key stays where it lives.
+    public func openSealed(wrap: JSON, envelope: JSON) throws -> String {
+        try Crypto.openSealed(wrap: wrap, envelope: envelope, keys: keys)
+    }
+
+    /// The ENCRYPTION key of the vault this profile is paired with, to seal what is asked of
+    /// it. It comes from the record, like any member's. Nil = not paired, or the vault has
+    /// not published one yet.
+    public var vaultEncPub: String? {
+        guard let master = vault?.master else { return nil }
+        guard let m = (acta?["members"]?.array ?? []).first(where: { $0["pub"]?.string == master }) else { return nil }
+        guard let e = m["encPub"]?.string, !e.isEmpty else { return nil }
+        return e
+    }
+
     /// `decryptWithKeyring`: content encrypted with any generation this device holds.
     public func decryptWithKeyring(_ envelope: JSON) throws -> String {
         guard let g = (acta?["keyring"]?.array ?? []).first(where: { $0["gen"]?.int == envelope["gen"]?.int }), let w = g["wraps"]?[publickey] else {

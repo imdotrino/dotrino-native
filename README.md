@@ -20,7 +20,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | Archivo | Qué es | Original en JS |
 |---|---|---|
 | `Canonical.kt` | JSON canónico (lo que se firma) | `vault/core.js` `canonicalStringify` |
-| `Crypto.kt` | JWK, firma P1363, `openWrap` / `decryptWithCek` | `vault/capabilities.js`, `vault/content.js` |
+| `Crypto.kt` | JWK, firma P1363, `openWrap` / `decryptWithCek`; `makeContentKey` / `wrapForMember` / `encryptWithCek` (0.34.0: cerrar un valor a cada aparato, lo que usa el gestor de contraseñas nativo) | `vault/capabilities.js`, `vault/content.js` |
 | `Delegation.kt` | `pubkeyId`, `keyLabel`, cuerpo y comprobación del papel | `vault/keyid.js`, `delegationBody` |
 | `KeystoreKeys.kt` | las dos llaves de una cuenta en el Android Keystore | — |
 | `ProxyConnection.kt` | `connected` / `identify` / `push-subscribe` / mensaje por pubkey / `networkStats` (0.27.0: una conexión suelta también sale en el modal de red del topbar, registrándola en `DotrinoNetwork`) / `NetworkStats.report()` (0.29.0: el modal de red copia las cifras como texto) / `useDirect` + `sendToOrUpgrade` + `enableTurn` (0.28.0: la conexión suelta también sube a WebRTC; `RemoteAgent.Session` habla por token en cuanto conoce el del agente, como el cliente JS) | `proxy-client/src/client.js` |
@@ -33,6 +33,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | Pieza | Qué es | Original en JS |
 |---|---|---|
 | `Profile` | la identidad ACTIVA del teléfono leída del almacén de la identidad (`kv:`/`key:`), con su política: firma solo si el acta le da `sign` (si no, `needs-vault-signer`: firmar por la bóveda aún no está portado); `encrypt`/`decrypt` (sobre v2) | `@dotrino/identity` `signData`, `encrypt`, `decrypt` |
+| `Profile.openSealed` / `Profile.vaultEncPub` | abrir un valor sellado a este aparato (su envoltura y el sobre) y la llave de cifrado de la bóveda emparejada, sacada del acta (0.34.0) | `openSealedValue`, `vaultEncPub` |
 | `Acta` | `memberCan` / `effectiveCaps` (solo leer) | `vault/acta.js` |
 | `PhoneIdentity` (Android) / `Profile.fromPhone()` (iOS) | el perfil del teléfono: por la app de identidad en Android, por el almacén compartido del equipo en iOS; y la llave del TRANSPORTE de la app (firma sus canales) | — |
 | `ProxyConnection` (+) | el saludo (`helloTo`), canales (`publish`), anunciar y averiguar llaves de cifrado verificadas (`announceEncPub`, `encPubOf`), mandar por token | `proxy-client` |
