@@ -22,6 +22,11 @@ import android.media.MediaPlayer
  *
  *     ffmpeg -i trino-01a.wav -c:a libvorbis -q:a 6 dotrino_ring.ogg     # Android
  *     ffmpeg -i trino-01a.wav -c:a adpcm_ima_qt -f caf dotrino-ring.caf  # iOS
+ *
+ * Y EL TRINO DE TERMINADO ([playDone]): OTRO trino, para «lo que pediste ya acabó» (una consola
+ * de Dotrino Terminal que terminó), distinto del de aviso para que se distingan de oído (dueño,
+ * 2026-10-14). Es `sound/trinos/trino-02b.wav`, convertido igual (`dotrino_done.ogg` /
+ * `dotrino-done.caf`); en la web, `playDone` de `@dotrino/notifications/ring`.
  */
 object DotrinoRing {
 
@@ -56,12 +61,17 @@ object DotrinoRing {
      * Toca el trino, si el teléfono deja sonar: en silencio, en vibración o con «No
      * molestar», no suena (lo mismo que haría el sistema con un aviso).
      */
-    fun play(ctx: Context) {
+    fun play(ctx: Context) = play(ctx, R.raw.dotrino_ring)
+
+    /** Toca el trino de TERMINADO (lo que pediste ya acabó), con las mismas reglas que [play]. */
+    fun playDone(ctx: Context) = play(ctx, R.raw.dotrino_done)
+
+    private fun play(ctx: Context, res: Int) {
         val am = ctx.getSystemService(AudioManager::class.java)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
-        val mp = MediaPlayer.create(ctx, R.raw.dotrino_ring, attrs, am.generateAudioSessionId()) ?: return
+        val mp = MediaPlayer.create(ctx, res, attrs, am.generateAudioSessionId()) ?: return
         // Softer than the stream's full level (dueño, 2026-09-30: «muy fuerte en Android»): on
         // Android the notification stream plays it at the phone's level, where iOS is gentler.
         mp.setVolume(VOLUME, VOLUME)
