@@ -232,7 +232,6 @@ private struct SupportSheet: View {
     let repo: String
     let onClose: () -> Void
     @ObservedObject private var lang = DotrinoLang.shared
-    private static let kofi = URL(string: "https://ko-fi.com/dotrino")!
     private static let discord = URL(string: "https://discord.gg/D648uq7cth")!
     private static let home = URL(string: "https://dotrino.com/")!
     private func T(_ k: String) -> String { lang.text(k, in: .module) }
@@ -242,9 +241,9 @@ private struct SupportSheet: View {
             Image("DotrinoCoin", bundle: .module).resizable().frame(width: 72, height: 72)
             Text(T("dotrino_support_heading")).font(.title3.weight(.bold)).foregroundColor(DotrinoPalette.fg)
             Text(T("dotrino_support_message")).font(.callout).foregroundColor(DotrinoPalette.muted).multilineTextAlignment(.center)
-            Link(T("dotrino_support_donate"), destination: Self.kofi)
-                .frame(maxWidth: .infinity).padding(12).background(DotrinoPalette.accent).foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            // «Donar» (Ko-fi) quitado de iOS el 2026-10-15: App Review (2.1(b)) lo leyó como
+            // contenido de pago, y fuera de In-App Purchase Apple solo admite donaciones a ONG
+            // aprobadas (3.2.2). Temporal: el dueño lo vuelve a poner cuando decida cómo.
             HStack(spacing: 10) {
                 Link(T("dotrino_support_discord"), destination: Self.discord).frame(maxWidth: .infinity)
                 Link(T("dotrino_support_bug"), destination: URL(string: "https://github.com/\(repo)/issues")!).frame(maxWidth: .infinity)
