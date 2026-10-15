@@ -59,6 +59,13 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
             return Crypto.verify(sealedBy!!, JsonObject(card - "sig"), sig)
         }
 
+        /**
+         * A card signed by the profile's OWN key. Only that proves the `profileId` belongs to whoever
+         * signed it: anyone can write somebody else's `profileId` in a card signed with their key.
+         */
+        fun ownCard(card: JsonObject?): Boolean =
+            card != null && Delegation.samePubkey(card.str("sealedBy"), card.str("profileId"))
+
         private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
         private fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.longOrNull
     }
@@ -211,18 +218,42 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
     }
 
     /**
-     * The card of a contact: under its own record, under its `profileId`, or the card that
-     * lists this key among its devices (the pubkey you added may be one device of the person).
+     * The card of a person kept by their ACCOUNT (`publickey` is their `profileId`), and only if
+     * that profile's own key signed it ([ownCard]).
+     *
+     * It used to also take ANY card that listed this key among its devices, and that was a hole:
+     * anyone can sign a card of THEIR profile that lists somebody else's key, and with it pass for
+     * that contact. A contact kept by one device's key has no card until it moves to its account
+     * ([accountFromCard]).
      */
     suspend fun cardOf(publickey: String): JsonObject? = lock.withLock {
         val peers = read()
-        val rec = peers[publickey]
-        (rec?.get("card") as? JsonObject)
-            ?: rec?.str("profileId")?.let { peers[it]?.get("card") as? JsonObject }
-            ?: peers.values.mapNotNull { it["card"] as? JsonObject }.firstOrNull { c ->
-                (c["keys"] as? JsonArray).orEmpty().any { k -> Delegation.samePubkey((k as? JsonObject)?.str("pub"), publickey) }
-            }
+        val card = (peers[publickey]?.get("card") as? JsonObject)
+            ?: peers.values.mapNotNull { it["card"] as? JsonObject }.firstOrNull { Delegation.samePubkey(it.str("profileId"), publickey) }
+        card?.takeIf { ownCard(it) && Delegation.samePubkey(it.str("profileId"), publickey) }
     }
+
+    /**
+     * The account of the device that delivered [card]. It takes both ends: the profile signed the
+     * card ([ownCard]) AND the device that brought it is in it. A profile listing a key proves
+     * nothing (it can list somebody else's); that device bringing it does. It reads the card KEPT
+     * here ([adoptPeerCard] already decided whether to take the one that arrived).
+     */
+    suspend fun accountFromCard(card: JsonObject?, device: String): String? {
+        if (!ownCard(card)) return null
+        val kept = cardOf(card!!.str("profileId") ?: return null) ?: return null
+        val listed = (kept["keys"] as? JsonArray).orEmpty().any { k -> Delegation.samePubkey((k as? JsonObject)?.str("pub"), device) }
+        return if (listed) kept.str("profileId") else null
+    }
+
+    /** The devices of a person's account, with their encryption keys (empty without a card). */
+    suspend fun devicesOf(publickey: String): List<Pair<String, String>> =
+        (cardOf(publickey)?.get("keys") as? JsonArray).orEmpty().mapNotNull { k ->
+            val o = k as? JsonObject ?: return@mapNotNull null
+            val pub = o.str("pub") ?: return@mapNotNull null
+            val enc = o.str("encPub") ?: return@mapNotNull null
+            pub to enc
+        }
 
     /** Every encryption key I know for a person: the one saved plus all of their card. */
     suspend fun encPubsOf(publickey: String): List<String> {

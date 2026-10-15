@@ -49,6 +49,13 @@ public final class PeerBook: @unchecked Sendable {
         return j["kty"]?.string == "EC" && j["x"] != nil && j["y"] != nil
     }
 
+    /// A card signed by the profile's OWN key. Only that proves the `profileId` belongs to whoever
+    /// signed it: anyone can write somebody else's `profileId` in a card signed with their key.
+    public static func ownCard(_ card: JSON?) -> Bool {
+        guard let card else { return false }
+        return Delegation.samePubkey(card["sealedBy"]?.string, card["profileId"]?.string)
+    }
+
     /// `verifyProfileCard`: well formed and signed by whom it says (`sealedBy`).
     public static func verifyCard(_ card: JSON?) -> Bool {
         guard let card, var o = card.object, card["v"]?.int == 1,
@@ -206,13 +213,37 @@ public final class PeerBook: @unchecked Sendable {
 
     /// The card of a contact: under its record, under its `profileId`, or the card that lists
     /// this key among its devices.
+    /// The card of a person kept by their ACCOUNT (`publickey` is their `profileId`), and only if
+    /// that profile's own key signed it (`ownCard`).
+    ///
+    /// It used to also take ANY card that listed this key among its devices, and that was a hole:
+    /// anyone can sign a card of THEIR profile that lists somebody else's key, and with it pass for
+    /// that contact. A contact kept by one device's key has no card until it moves to its account
+    /// (`accountFromCard`).
     public func cardOf(_ publickey: String) throws -> JSON? {
         let peers = try lock.withLock { try read() }
-        let rec = peers[publickey]
-        if let c = rec?["card"], c.object != nil { return c }
-        if let pid = rec?["profileId"]?.string, let c = peers[pid]?["card"], c.object != nil { return c }
-        return peers.values.compactMap { $0["card"] }.first { c in
-            c.object != nil && (c["keys"]?.array ?? []).contains { Delegation.samePubkey($0["pub"]?.string, publickey) }
+        var card: JSON? = nil
+        if let c = peers[publickey]?["card"], c.object != nil { card = c }
+        else { card = peers.values.compactMap { $0["card"] }.first { $0.object != nil && Delegation.samePubkey($0["profileId"]?.string, publickey) } }
+        guard let card, Self.ownCard(card), Delegation.samePubkey(card["profileId"]?.string, publickey) else { return nil }
+        return card
+    }
+
+    /// The account of the device that delivered `card`. It takes both ends: the profile signed the
+    /// card (`ownCard`) AND the device that brought it is in it. A profile listing a key proves
+    /// nothing (it can list somebody else's); that device bringing it does. It reads the card KEPT
+    /// here (`adoptPeerCard` already decided whether to take the one that arrived).
+    public func accountFromCard(_ card: JSON?, device: String) throws -> String? {
+        guard Self.ownCard(card), let pid = card?["profileId"]?.string, let kept = try cardOf(pid) else { return nil }
+        let listed = (kept["keys"]?.array ?? []).contains { Delegation.samePubkey($0["pub"]?.string, device) }
+        return listed ? kept["profileId"]?.string : nil
+    }
+
+    /// The devices of a person's account, with their encryption keys (empty without a card).
+    public func devicesOf(_ publickey: String) throws -> [(pub: String, encPub: String)] {
+        (try cardOf(publickey)?["keys"]?.array ?? []).compactMap { k in
+            guard let pub = k["pub"]?.string, let enc = k["encPub"]?.string else { return nil }
+            return (pub, enc)
         }
     }
 

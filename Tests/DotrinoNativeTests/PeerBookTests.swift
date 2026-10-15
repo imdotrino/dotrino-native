@@ -22,14 +22,23 @@ final class PeerBookTests: XCTestCase {
         XCTAssertEqual(try b.adoptPeerCard(card).reason, "igual")
     }
 
-    func testAContactAddedByOneDeviceIsFoundThroughTheCard() throws {
+    func testTheCardIsTheAccountsAndTheDeviceThatBringsItProvesIt() throws {
         let p = try peers()
         let dev = p["cardDevPub"]!.string!
+        let card = p["card"]!
+        let account = card["profileId"]!.string!
         let b = book()
         try b.addContact(dev, nickname: "Beto", encryptionPubkey: "ENC-1")
-        try b.adoptPeerCard(p["card"]!)
-        XCTAssertEqual(try b.cardOf(dev), p["card"])
-        XCTAssertEqual(try b.encPubsOf(dev), ["ENC-1", p["cardDevEncPub"]!.string!])
+        try b.adoptPeerCard(card)
+        XCTAssertTrue(PeerBook.ownCard(card))
+        // The card belongs to the ACCOUNT. That it lists a key does not make it that key's.
+        XCTAssertEqual(try b.cardOf(account), card)
+        XCTAssertNil(try b.cardOf(dev))
+        XCTAssertEqual(try b.encPubsOf(dev), ["ENC-1"])
+        XCTAssertEqual(try b.encPubsOf(account), [p["cardDevEncPub"]!.string!])
+        XCTAssertEqual(try b.accountFromCard(card, device: dev), account)
+        XCTAssertNil(try b.accountFromCard(card, device: "{\"kty\":\"EC\",\"x\":\"other\"}"))
+        XCTAssertEqual(try b.devicesOf(account).map { $0.pub }, [dev])
         XCTAssertEqual(try b.contacts().count, 1)
         try b.removeContact(dev)
         XCTAssertEqual(try b.contacts().count, 0)

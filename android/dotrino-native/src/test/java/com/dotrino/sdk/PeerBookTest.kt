@@ -31,14 +31,23 @@ class PeerBookTest {
         assertEquals("igual", b.adoptPeerCard(card).reason)
     }
 
-    @Test fun aContactAddedByOneDeviceIsFoundThroughTheCard() = runBlocking {
+    @Test fun theCardIsTheAccountsAndTheDeviceThatBringsItProvesIt() = runBlocking {
         val card = p.getValue("card").jsonObject
         val dev = p.getValue("cardDevPub").jsonPrimitive.content
+        val account = card.getValue("profileId").jsonPrimitive.content
         val b = book()
         b.addContact(dev, nickname = "Beto", encryptionPubkey = "ENC-1")
         b.adoptPeerCard(card)
-        assertEquals(card, b.cardOf(dev))
-        assertEquals(listOf("ENC-1", p.getValue("cardDevEncPub").jsonPrimitive.content), b.encPubsOf(dev))
+        assertTrue(PeerBook.ownCard(card))
+        // The card belongs to the ACCOUNT. That it lists a key does not make it that key's
+        // (anyone can list somebody else's key in a card of their own profile).
+        assertEquals(card, b.cardOf(account))
+        assertNull(b.cardOf(dev))
+        assertEquals(listOf("ENC-1"), b.encPubsOf(dev))
+        assertEquals(listOf(p.getValue("cardDevEncPub").jsonPrimitive.content), b.encPubsOf(account))
+        assertEquals(account, b.accountFromCard(card, dev))
+        assertNull(b.accountFromCard(card, "{\"kty\":\"EC\",\"x\":\"other\"}"))
+        assertEquals(listOf(dev to p.getValue("cardDevEncPub").jsonPrimitive.content), b.devicesOf(account))
         assertEquals(1, b.contacts().size)
         b.removeContact(dev)
         assertEquals(0, b.contacts().size)
