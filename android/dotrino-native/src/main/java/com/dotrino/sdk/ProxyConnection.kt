@@ -46,6 +46,23 @@ class ProxyConnection(
 
     companion object {
         const val HELLO_TAG = "__cc_hello__"
+        /**
+         * What this library understands, said in the greeting (`SPEAKS` of the JS client). `binary`:
+         * packages and binary frames ([BinPack]); a JS client ≥ 0.36 only sends bytes to whoever
+         * said it.
+         */
+        val SPEAKS = listOf("binary")
+
+        /**
+         * A message that arrived as a PACKAGE (a binary frame, or binary over the direct road). A
+         * binary sealed envelope keeps its references for [IdentitySealing.openBinary]; anything
+         * else reaches the app with its bytes as base64. Null if it is not a package of an object.
+         */
+        fun incomingPackage(from: String?, fromPubkey: String?, body: ByteArray, queued: Boolean = false, queuedAt: Long? = null): Incoming? {
+            val p = BinPack.unpack(body)
+            val payload = (if (BinPack.isBinSealed(p)) p.json else p.resolved()) as? JsonObject ?: return null
+            return Incoming(from, fromPubkey, payload, queued, queuedAt, p)
+        }
         private val http: OkHttpClient by lazy {
             OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
         }
@@ -60,6 +77,8 @@ class ProxyConnection(
         /** It waited in the proxy's offline queue (and since when). */
         val queued: Boolean = false,
         val queuedAt: Long? = null,
+        /** The package it came in, when it came binary ([BinPack]); a binary sealed envelope is opened from here. */
+        val packed: BinPack.Packed? = null,
     )
 
     class ProxyError(message: String, val code: String) : Exception(message)
@@ -83,6 +102,8 @@ class ProxyConnection(
         data class Joined(val channel: String, val token: String) : Event()
         data class Left(val channel: String, val token: String) : Event()
         data class PeerIdentity(val token: String, val publickey: String) : Event()
+        /** Something arrived that is not a frame or package this library knows (`bad-frame`, `bad-pack`). */
+        data class Undecodable(val code: String, val reason: String) : Event()
     }
     private val events = CopyOnWriteArrayList<(Event) -> Unit>()
     fun onEvent(l: (Event) -> Unit): () -> Unit { events.add(l); return { events.remove(l) } }
@@ -104,6 +125,7 @@ class ProxyConnection(
     suspend fun connect(timeoutMs: Long = 10_000): String {
         ws = http.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
+            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) = handleBinary(bytes.toByteArray())
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = die("transport: ${t.message}")
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = die("closed: $code $reason")
         })
@@ -173,7 +195,7 @@ class ProxyConnection(
             "disconnected" -> {
                 val t = o["token"]?.jsonPrimitive?.content ?: return
                 // The token dies with the connection and is never reused: what it said is forgotten.
-                tokenPubkeys.remove(t); helloSent.remove(t)
+                tokenPubkeys.remove(t); helloSent.remove(t); tokenSpeaks.remove(t)
                 emit(Event.PeerGone(t, o["channel"]?.jsonPrimitive?.content))
                 if (id != null) pending.remove(id)?.complete(o)
             }
@@ -183,7 +205,7 @@ class ProxyConnection(
                 val w = id?.let { tokenWatch.remove(it) }
                 val failed = (o["failed"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
                 if (w != null && w.first in failed) {
-                    tokenPubkeys.remove(w.first); helloSent.remove(w.first)
+                    tokenPubkeys.remove(w.first); helloSent.remove(w.first); tokenSpeaks.remove(w.first)
                     emit(Event.PeerGone(w.first, null))
                     runCatching { w.third() }
                 }
@@ -193,6 +215,27 @@ class ProxyConnection(
                 ProxyError(o["error"]?.jsonPrimitive?.content ?: "proxy error", o["code"]?.jsonPrimitive?.content ?: "proxy-error"))
             else -> if (id != null) pending.remove(id)?.complete(o)
         }
+    }
+
+    /**
+     * A BINARY frame (websocket-proxy ≥ 1.6): the usual header and the `message` raw. The proxy
+     * only sends messages this way; what does not open is dropped and said, never guessed.
+     */
+    private fun handleBinary(raw: ByteArray) {
+        traffic.frame(true, raw.size)
+        val inc = try {
+            val (o, body) = BinPack.decodeFrame(raw)
+            if (o["type"]?.jsonPrimitive?.content != "message") return
+            val from = o["from"]?.jsonPrimitive?.content
+            val fromPubkey = o["from_publickey"]?.jsonPrimitive?.content
+            traffic.peer(true, "proxy", from, fromPubkey ?: from?.let { tokenPubkeys[it] }, body.size)
+            incomingPackage(from, fromPubkey, body,
+                queued = o["queued"]?.jsonPrimitive?.content == "true",
+                queuedAt = o["queued_at"]?.jsonPrimitive?.content?.toLongOrNull())
+        } catch (e: BinPack.BadPack) {
+            emit(Event.Undecodable(e.code, e.message ?: "")); null
+        } ?: return
+        listeners.forEach { runCatching { it(inc) } }
     }
 
     private fun send(frame: JsonObject) {
@@ -259,8 +302,16 @@ class ProxyConnection(
         val me = myPublickey ?: throw ProxyError("helloTo: identify first", "not-identified")
         if (to == token) return
         helloSent.add(to)
-        sendTo(listOf(to), buildJsonObject { put("t", HELLO_TAG); put("publickey", me) })
+        sendTo(listOf(to), buildJsonObject {
+            put("t", HELLO_TAG); put("publickey", me)
+            put("speaks", buildJsonArray { SPEAKS.forEach { add(JsonPrimitive(it)) } })
+        })
     }
+
+    private val tokenSpeaks = ConcurrentHashMap<String, Set<String>>()
+
+    /** Whether the connection behind [token] said it understands [feature] in its greeting; null: it has not greeted. */
+    fun speaks(token: String, feature: String = "binary"): Boolean? = tokenSpeaks[token]?.contains(feature)
 
     /** Whose this token is, if someone said it. */
     fun pubkeyOfToken(t: String): String? = tokenPubkeys[t]
@@ -285,6 +336,12 @@ class ProxyConnection(
                 traffic.peer(true, d.route(from) ?: "webrtc", from, pubkeyOfToken(from), utf8Length(text))
                 val payload = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return@bind
                 val inc = Incoming(from, pubkeyOfToken(from), payload)
+                listeners.forEach { runCatching { it(inc) } }
+            },
+            deliverBinary = { from, bytes ->
+                traffic.peer(true, d.route(from) ?: "webrtc", from, pubkeyOfToken(from), bytes.size)
+                val inc = try { incomingPackage(from, pubkeyOfToken(from), bytes) }
+                    catch (e: BinPack.BadPack) { emit(Event.Undecodable(e.code, e.message ?: "")); null } ?: return@bind
                 listeners.forEach { runCatching { it(inc) } }
             },
         )
@@ -343,6 +400,7 @@ class ProxyConnection(
         // to get sealed to someone else. The first one stands.
         if (before != null && !Delegation.samePubkey(before, pk)) return
         tokenPubkeys[from] = pk
+        tokenSpeaks[from] = (msg["speaks"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }.take(32).toSet()
         if (from !in helloSent && myPublickey != null) runCatching { helloTo(from) }
         emit(Event.PeerIdentity(from, pk))
     }

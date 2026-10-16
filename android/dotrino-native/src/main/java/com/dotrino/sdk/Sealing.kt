@@ -52,4 +52,20 @@ class IdentitySealing(private val profile: Profile, val app: String) {
         val payload = json.parseToJsonElement(text) as? JsonObject ?: throw SealingError("sealed payload is not an object", "bad-payload")
         return Opened(payload, from)
     }
+
+    /**
+     * Opens a BINARY sealed envelope (`{ bv: 1, k, iv, ct }`, proxy-client ≥ 0.35): `k` is the
+     * usual envelope with the message key inside, and with it the package comes out of `ct`. Its
+     * bytes reach the app as base64 ([BinPack.Packed.resolved]).
+     */
+    suspend fun openBinary(p: BinPack.Packed): Opened {
+        if (!BinPack.isBinSealed(p)) throw SealingError("not a binary sealed envelope", "not-sealed")
+        val o = p.json as JsonObject
+        val key = open(o["k"] as JsonObject)
+        val cek = (key.payload["cek"] as? JsonPrimitive)?.content ?: throw SealingError("the sealed key of a message has no key inside", "bad-pack")
+        val plain = try { Crypto.aesGcmOpen(Crypto.fromB64(cek), p.bytesOf(o["iv"])!!, p.bytesOf(o["ct"])!!) }
+            catch (e: Exception) { throw SealingError("the message does not open with its key: ${e.message}", "undecipherable") }
+        val payload = BinPack.unpack(plain).resolved() as? JsonObject ?: throw SealingError("sealed payload is not an object", "bad-payload")
+        return Opened(payload, key.senderEncPub)
+    }
 }

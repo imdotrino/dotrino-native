@@ -6,9 +6,13 @@ import Foundation
 ///
 /// Wire-compatible with the JS: signalling through the proxy as `{ t: "__cc_rtc__", kind: "sdp" |
 /// "ice", … }`, a data channel `cc` (ordered) opened by the peer with the greater token, and the
-/// same text in it that would have gone through the proxy. Never blocks.
+/// same in it that would have gone through the proxy: text, or a package in a binary message.
+/// Never blocks.
 public protocol DirectTransport: AnyObject {
-    func bind(selfToken: @escaping () -> String?, signalSend: @escaping (String, JSON) -> Void, deliver: @escaping (String, String) -> Void)
+    /// Wiring: my token, how to signal, where arrivals go — text to `deliver`, a binary message
+    /// (a package, `BinPack`) to `deliverBinary`.
+    func bind(selfToken: @escaping () -> String?, signalSend: @escaping (String, JSON) -> Void,
+              deliver: @escaping (String, String) -> Void, deliverBinary: @escaping (String, Data) -> Void)
     /// Sends over the open channel. False = there is none; use the proxy.
     func send(_ token: String, _ text: String) -> Bool
     /// Starts negotiating if not already (best effort, no wait).

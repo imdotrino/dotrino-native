@@ -112,6 +112,13 @@ class SealedSession(
                 val payload = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return@bind
                 scope.launch { deliver(c, ProxyConnection.Incoming(from, null, payload)) }
             },
+            deliverBinary = { from, bytes ->
+                traffic.peer(true, d.route(from) ?: "webrtc", from, conn?.pubkeyOfToken(from), bytes.size)
+                val c = conn ?: return@bind
+                val inc = try { ProxyConnection.incomingPackage(from, null, bytes) }
+                    catch (e: BinPack.BadPack) { onWarn("dropped a binary message that does not unpack (${e.code})", e); null } ?: return@bind
+                scope.launch { deliver(c, inc) }
+            },
         )
     }
 
@@ -206,11 +213,12 @@ class SealedSession(
             if (d != null && inc.from != null) d.handleSignal(inc.from, inc.payload)
             return
         }
-        if (!sealing.isSealed(inc.payload)) {
+        val bin = inc.packed?.takeIf { BinPack.isBinSealed(it) }
+        if (bin == null && !sealing.isSealed(inc.payload)) {
             onWarn("dropped a message that arrived unsealed", null)
             return
         }
-        val opened = try { sealing.open(inc.payload) } catch (e: Exception) {
+        val opened = try { if (bin != null) sealing.openBinary(bin) else sealing.open(inc.payload) } catch (e: Exception) {
             // Sealed to somebody else, or tampered with. Staying quiet is the point.
             return
         }

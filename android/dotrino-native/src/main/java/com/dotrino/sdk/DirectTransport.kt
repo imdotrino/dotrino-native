@@ -10,7 +10,8 @@ import kotlinx.serialization.json.JsonObject
  *
  * Wire-compatible with the JS: signalling goes through the proxy as `{ t: '__cc_rtc__', kind:
  * 'sdp' | 'ice', … }`; the data channel is `cc`, ordered, opened by the peer with the greater
- * token; what travels in it is the same text that would have gone through the proxy.
+ * token; what travels in it is what would have gone through the proxy: text, or a package in a
+ * binary message.
  *
  * Never blocks: the first message goes by the proxy and the channel is negotiated underneath;
  * from then on [send] prefers it.
@@ -18,8 +19,16 @@ import kotlinx.serialization.json.JsonObject
 interface DirectTransport {
     companion object { const val RTC_TAG = "__cc_rtc__" }
 
-    /** Wiring, set by [SealedSession.useDirect]: my token, how to signal, where arrivals go. */
-    fun bind(selfToken: () -> String?, signalSend: (String, JsonObject) -> Unit, deliver: (String, String) -> Unit)
+    /**
+     * Wiring, set by [SealedSession.useDirect]: my token, how to signal, where arrivals go —
+     * text to [deliver], a binary message (a package, [BinPack]) to [deliverBinary].
+     */
+    fun bind(
+        selfToken: () -> String?,
+        signalSend: (String, JsonObject) -> Unit,
+        deliver: (String, String) -> Unit,
+        deliverBinary: (String, ByteArray) -> Unit,
+    )
 
     /** Sends [text] over the open channel to [token]. False = there is none; use the proxy. */
     fun send(token: String, text: String): Boolean

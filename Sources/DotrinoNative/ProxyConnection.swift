@@ -52,6 +52,22 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         /// It waited in the proxy's offline queue (and since when).
         public var queued: Bool = false
         public var queuedAt: Int64? = nil
+        /// The package it came in, when it came binary (`BinPack`); a binary sealed envelope is opened from here.
+        public var packed: BinPack.Packed? = nil
+    }
+
+    /// What this library understands, said in the greeting (`SPEAKS` of the JS client). `binary`:
+    /// packages and binary frames (`BinPack`); a JS client ≥ 0.36 only sends bytes to whoever said it.
+    public static let speaks = ["binary"]
+
+    /// A message that arrived as a PACKAGE (a binary frame, or binary over the direct road). A
+    /// binary sealed envelope keeps its references for `IdentitySealing.openBinary`; anything else
+    /// reaches the app with its bytes as base64. Nil if it is not a package of an object.
+    public static func incomingPackage(from: String?, fromPubkey: String?, body: Data, queued: Bool = false, queuedAt: Int64? = nil) throws -> Incoming? {
+        let p = try BinPack.unpack(body)
+        let payload = BinPack.isBinSealed(p) ? p.json : p.resolved()
+        guard payload.object != nil else { return nil }
+        return Incoming(from: from, fromPubkey: fromPubkey, payload: payload, queued: queued, queuedAt: queuedAt, packed: p)
     }
 
     private let url: URL
@@ -82,6 +98,8 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         case joined(channel: String, token: String)
         case left(channel: String, token: String)
         case peerIdentity(token: String, publickey: String)
+        /// Something arrived that is not a frame or package this library knows (`bad-frame`, `bad-pack`).
+        case undecodable(code: String, reason: String)
     }
     private var eventListeners: [UUID: (Event) -> Void] = [:]
     public func onEvent(_ l: @escaping (Event) -> Void) -> () -> Void {
@@ -179,7 +197,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             case .success(let m):
                 switch m {
                 case .string(let s): self.handle(s)
-                case .data(let d): if let s = String(data: d, encoding: .utf8) { self.handle(s) }
+                case .data(let d): self.handleBinary(d)
                 @unknown default: break
                 }
                 if self.closed == nil { self.receive(t) }
@@ -200,6 +218,26 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         die("closed: \(closeCode.rawValue) \(reason.flatMap { String(data: $0, encoding: .utf8) } ?? "")")
+    }
+
+    /// A BINARY frame (websocket-proxy ≥ 1.6): the usual header and the `message` raw. The proxy
+    /// only sends messages this way; what does not open is dropped and said, never guessed.
+    private func handleBinary(_ raw: Data) {
+        traffic.frame(incoming: true, bytes: raw.count)
+        let inc: Incoming?
+        do {
+            let (o, body) = try BinPack.decodeFrame(raw)
+            guard o["type"]?.string == "message" else { return }
+            let from = o["from"]?.string
+            let fromPk = o["from_publickey"]?.string
+            traffic.peer(incoming: true, path: "proxy", token: from, pubkey: fromPk ?? from.flatMap { f in lock.withLock { tokenPubkeys[f] } }, bytes: body.count)
+            inc = try Self.incomingPackage(from: from, fromPubkey: fromPk, body: body, queued: o["queued"]?.bool ?? false, queuedAt: o["queued_at"]?.int)
+        } catch let e as BinPack.BadPack {
+            emit(.undecodable(code: e.code, reason: e.description)); return
+        } catch { return }
+        guard let inc else { return }
+        lock.lock(); let ls = Array(listeners.values); lock.unlock()
+        ls.forEach { $0(inc) }
     }
 
     private func handle(_ text: String) {
@@ -245,7 +283,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         case "disconnected":
             guard let t = o["token"]?.string else { return }
             // The token dies with the connection and is never reused: what it said is forgotten.
-            lock.withLock { tokenPubkeys[t] = nil; helloSent.remove(t) }
+            lock.withLock { tokenPubkeys[t] = nil; helloSent.remove(t); tokenSpeaks[t] = nil }
             emit(.peerGone(token: t, channel: o["channel"]?.string))
             if let id, let p = take(id) { p.finish(.success(o)) }
         case "joined":
@@ -255,7 +293,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         case "message_sent":
             let w: (token: String, at: Date, onGone: () -> Void)? = id.flatMap { i in lock.withLock { tokenWatch.removeValue(forKey: i) } }
             if let w, (o["failed"]?.array ?? []).contains(where: { $0.string == w.token }) {
-                lock.withLock { tokenPubkeys[w.token] = nil; helloSent.remove(w.token) }
+                lock.withLock { tokenPubkeys[w.token] = nil; helloSent.remove(w.token); tokenSpeaks[w.token] = nil }
                 emit(.peerGone(token: w.token, channel: nil))
                 w.onGone()
             }
@@ -336,7 +374,14 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         guard let me = lock.withLock({ myPublickey }) else { throw ProxyError("helloTo: identify first", code: "not-identified") }
         if to == token { return }
         _ = lock.withLock { helloSent.insert(to) }
-        try sendTo([to], ["t": .string(Self.helloTag), "publickey": .string(me)])
+        try sendTo([to], ["t": .string(Self.helloTag), "publickey": .string(me), "speaks": .array(Self.speaks.map { .string($0) })])
+    }
+
+    private var tokenSpeaks: [String: Set<String>] = [:]
+
+    /// Whether the connection behind `token` said it understands `feature` in its greeting; nil: it has not greeted.
+    public func speaks(_ token: String, _ feature: String = "binary") -> Bool? {
+        lock.withLock { tokenSpeaks[token]?.contains(feature) }
     }
 
     /// Whose this token is, if someone said it.
@@ -361,6 +406,17 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
                 self.traffic.peer(incoming: true, path: d?.route(from) ?? "webrtc", token: from, pubkey: self.pubkeyOfToken(from), bytes: utf8Length(text))
                 guard let payload = try? JSON.parse(text), payload.object != nil else { return }
                 let inc = Incoming(from: from, fromPubkey: self.pubkeyOfToken(from), payload: payload)
+                self.lock.lock(); let ls = Array(self.listeners.values); self.lock.unlock()
+                ls.forEach { $0(inc) }
+            },
+            deliverBinary: { [weak self, weak d] from, data in
+                guard let self else { return }
+                self.traffic.peer(incoming: true, path: d?.route(from) ?? "webrtc", token: from, pubkey: self.pubkeyOfToken(from), bytes: data.count)
+                let inc: Incoming?
+                do { inc = try Self.incomingPackage(from: from, fromPubkey: self.pubkeyOfToken(from), body: data) }
+                catch let e as BinPack.BadPack { self.emit(.undecodable(code: e.code, reason: e.description)); return }
+                catch { return }
+                guard let inc else { return }
                 self.lock.lock(); let ls = Array(self.listeners.values); self.lock.unlock()
                 ls.forEach { $0(inc) }
             })
@@ -402,6 +458,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             // A TOKEN DOES NOT CHANGE OWNER: a second greeting with another identity is ignored.
             if let before = tokenPubkeys[from], !Delegation.samePubkey(before, pk) { return (false, false) }
             tokenPubkeys[from] = pk
+            tokenSpeaks[from] = Set((msg["speaks"]?.array ?? []).prefix(32).compactMap(\.string))
             return (true, !helloSent.contains(from) && myPublickey != nil)
         }
         guard ok else { return }

@@ -14,6 +14,7 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     private var selfToken: () -> String? = { nil }
     private var signalSend: (String, JSON) -> Void = { _, _ in }
     private var deliverText: (String, String) -> Void = { _, _ in }
+    private var deliverBinary: (String, Data) -> Void = { _, _ in }
     private var peers: [String: Peer] = [:]
     private let peersLock = NSLock()
 
@@ -39,8 +40,9 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
         super.init()
     }
 
-    public func bind(selfToken: @escaping () -> String?, signalSend: @escaping (String, JSON) -> Void, deliver: @escaping (String, String) -> Void) {
-        self.selfToken = selfToken; self.signalSend = signalSend; self.deliverText = deliver
+    public func bind(selfToken: @escaping () -> String?, signalSend: @escaping (String, JSON) -> Void,
+                     deliver: @escaping (String, String) -> Void, deliverBinary: @escaping (String, Data) -> Void) {
+        self.selfToken = selfToken; self.signalSend = signalSend; self.deliverText = deliver; self.deliverBinary = deliverBinary
     }
 
     public func setIceServers(_ servers: [IceServer]) { if !servers.isEmpty { q.async { self.iceServers = servers } } }
@@ -199,7 +201,8 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     }
 
     fileprivate func dcMessage(_ p: Peer, _ b: RTCDataBuffer) {
-        guard !b.isBinary, let text = String(data: b.data, encoding: .utf8) else { return }
+        if b.isBinary { deliverBinary(p.remote, b.data); return }
+        guard let text = String(data: b.data, encoding: .utf8) else { return }
         deliverText(p.remote, text)
     }
 

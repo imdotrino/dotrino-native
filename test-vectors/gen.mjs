@@ -61,6 +61,30 @@ const { identitySealing } = await import(join(here, '../../dotrino-proxy-client/
 const sealedMsg = { type: 'DM', text: 'hola ñandú ✓', ts: 1790000000000, mid: 'm-1' }
 const appSealed = await identitySealing(sender, { app: 'messenger' }).seal(sealedMsg, phoneEnc.encPublickey)
 
+// 5b2) TODO EN BINARIO (proxy-client ≥ 0.35): un mensaje con bytes dentro, sellado con el sobre
+//      binario (la CEK sellada con `identitySealing`, el paquete cifrado como bytes) y metido en
+//      la trama binaria del proxio, tal cual lo arma el pilar. El teléfono lo desempaqueta y lo
+//      abre; los bytes le llegan como base64 dentro del JSON.
+const pcSrc = join(here, '../../dotrino-proxy-client/src')
+const { pack, encodeFrame } = await import(join(pcSrc, 'binpack.js'))
+const { setSealingPrimitives, makeMessageKey, encryptBytes, BIN_SEALED } = await import(join(pcSrc, 'sealing.js'))
+setSealingPrimitives(await import(join(id, 'content.js')))
+const fileBytes = new Uint8Array([0, 1, 2, 127, 128, 250, 255])
+const binMsg = { type: 'DM', text: 'archivo ñ', file: { name: 'a.bin', mime: 'application/octet-stream', data: fileBytes } }
+const binCek = await makeMessageKey()
+const binK = await identitySealing(sender, { app: 'messenger' }).seal({ cek: binCek }, phoneEnc.encPublickey)
+const binCt = await encryptBytes(binCek, pack(binMsg))
+const binEnv = pack({ bv: BIN_SEALED, k: binK, iv: binCt.iv, ct: binCt.ct })
+const binFrame = encodeFrame({ type: 'message', from: 'TOK-A', from_publickey: 'PK-A', queued: true, queued_at: 1790000000000 }, binEnv)
+const b64 = (u8) => Buffer.from(u8).toString('base64')
+const binSealed = {
+  app: 'messenger', frame: b64(binFrame), senderEncPub,
+  resolved: { ...binMsg, file: { ...binMsg.file, data: b64(fileBytes) } },
+  // Un paquete SIN sellar con bytes (lo que manda un canal que cifra por su cuenta).
+  plainPacked: b64(pack({ type: 'ra.data', n: 3, blob: fileBytes, list: [fileBytes, 'x'] })),
+  plainResolved: { type: 'ra.data', n: 3, blob: b64(fileBytes), list: [b64(fileBytes), 'x'] },
+}
+
 // 5c) Libro de contactos: una TARJETA de perfil firmada por su master y una CALIFICACIÓN
 //     firmada por una identidad. El teléfono las verifica (PeerBook).
 const { makeProfileCard } = await import(join(id, 'acta.js'))
@@ -162,6 +186,7 @@ const actaHashes = Object.fromEntries(await Promise.all(Object.entries(named).ma
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
+  binSealed,
   peers: { card, cardDevPub: cardDev.publickey, cardDevEncPub: cardDevEnc.encPublickey, endorsement, subject: ratedSubject },
   store: { digests, plans },
   actaProfile: { signPrivateJwk: repSign.privateJwk, encPrivateJwk: repEnc.encPrivateJwk, acta: repActa },

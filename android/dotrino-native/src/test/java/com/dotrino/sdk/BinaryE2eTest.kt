@@ -1,0 +1,70 @@
+package com.dotrino.sdk
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+
+/**
+ * The phone READS BINARY from the real pillar, through a real proxy: a file sealed in binary by
+ * token, another by pubkey (the queue road), and the phone's text answer reaches the JS.
+ *
+ *   node test-vectors/e2e-binary.mjs /tmp/bin.json
+ *   DOTRINO_E2E_BIN=/tmp/bin.json ./gradlew :dotrino-native:testDebugUnitTest --tests '*BinaryE2eTest*'
+ */
+class BinaryE2eTest {
+    @Test fun aJsClientSendsFilesInBinaryAndThePhoneOpensThem() = runBlocking {
+        val path = System.getenv("DOTRINO_E2E_BIN")
+        assumeTrue("DOTRINO_E2E_BIN not set: start test-vectors/e2e-binary.mjs to run this", path != null && File(path).exists())
+        val f = Json.parseToJsonElement(File(path!!).readText()).jsonObject
+        val profile = Profile.of(TestKeys.fromJwk(f.getValue("sign").jsonObject, f.getValue("enc").jsonObject))
+        val s = SealedSession(listOf(f.getValue("proxyUrl").jsonPrimitive.content), profile, "messenger")
+        val got = CopyOnWriteArrayList<SealedSession.Message>()
+        val two = CompletableDeferred<Unit>()
+        s.onMessage { got.add(it); if (got.size >= 2) two.complete(Unit) }
+        try {
+            s.start()
+            assert(s.awaitOnline()) { "phone offline: ${s.status}" }
+            val jsToken = f.getValue("jsToken").jsonPrimitive.content
+            // The greeting says `speaks: ['binary']`; that is what lets the JS send bytes.
+            val who = s.whoIs(jsToken)
+            assert(Delegation.samePubkey(who, f.getValue("jsPubkey").jsonPrimitive.content)) { "the greeting did not say who" }
+
+            val sentFile = File("$path.sent")
+            withTimeout(30_000) { while (!sentFile.exists()) delay(100) }
+            val sent = Json.parseToJsonElement(sentFile.readText()).jsonObject
+            assertNull("the JS could not send: ${sent["error"]}", sent["error"])
+            withTimeout(30_000) { two.await() }
+
+            val dm = got.first { it.payload["type"]?.jsonPrimitive?.content == "DM" }
+            assertEquals(sent.getValue("file").jsonPrimitive.content,
+                dm.payload.getValue("file").jsonObject.getValue("data").jsonPrimitive.content)
+            assertEquals("foto.bin", dm.payload.getValue("file").jsonObject.getValue("name").jsonPrimitive.content)
+            val q = got.first { it.payload["type"]?.jsonPrimitive?.content == "QUEUED" }
+            assertEquals(sent.getValue("blob").jsonPrimitive.content, q.payload.getValue("blob").jsonPrimitive.content)
+            assert(Delegation.samePubkey(q.fromPubkey, f.getValue("jsPubkey").jsonPrimitive.content))
+
+            // And the phone answers (still in text, sealed): the JS opens it.
+            s.sendSealedTo(jsToken, buildJsonObject { put("type", "ACK"); put("n", 2) })
+            val reply = File("$path.reply")
+            withTimeout(15_000) { while (!reply.exists()) delay(100) }
+            val r = Json.parseToJsonElement(reply.readText()).jsonObject
+            assertEquals("ACK", r.getValue("msg").jsonObject.getValue("type").jsonPrimitive.content)
+            assertEquals("true", r.getValue("sealed").jsonPrimitive.content)
+        } finally {
+            s.close()
+            File(path).delete()
+        }
+    }
+}

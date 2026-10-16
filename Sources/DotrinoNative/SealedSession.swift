@@ -94,6 +94,17 @@ public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
                                   pubkey: self.lock.withLock({ self.conn })?.pubkeyOfToken(from), bytes: utf8Length(text))
                 guard let c = self.lock.withLock({ self.conn }), let payload = try? JSON.parse(text), payload.object != nil else { return }
                 Task { await self.deliver(c, ProxyConnection.Incoming(from: from, fromPubkey: nil, payload: payload)) }
+            },
+            deliverBinary: { [weak self, weak d] from, data in
+                guard let self else { return }
+                self.traffic.peer(incoming: true, path: d?.route(from) ?? "webrtc", token: from,
+                                  pubkey: self.lock.withLock({ self.conn })?.pubkeyOfToken(from), bytes: data.count)
+                guard let c = self.lock.withLock({ self.conn }) else { return }
+                let inc: ProxyConnection.Incoming?
+                do { inc = try ProxyConnection.incomingPackage(from: from, fromPubkey: nil, body: data) }
+                catch { self.onWarn("dropped a binary message that does not unpack", error); return }
+                guard let inc else { return }
+                Task { await self.deliver(c, inc) }
             })
     }
 
@@ -221,9 +232,10 @@ public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
             if let d = lock.withLock({ direct }), let from = inc.from { d.handleSignal(from: from, inc.payload) }
             return
         }
-        guard sealing.isSealed(inc.payload) else { onWarn("dropped a message that arrived unsealed", nil); return }
+        let bin = inc.packed.flatMap { BinPack.isBinSealed($0) ? $0 : nil }
+        guard bin != nil || sealing.isSealed(inc.payload) else { onWarn("dropped a message that arrived unsealed", nil); return }
         // Sealed to somebody else, or tampered with: staying quiet is the point.
-        guard let opened = try? sealing.open(inc.payload) else { return }
+        guard let opened = try? (bin.map { try sealing.openBinary($0) } ?? sealing.open(inc.payload)) else { return }
         let claimed = inc.fromPubkey ?? inc.from.flatMap { c.pubkeyOfToken($0) }
         let m = Message(fromToken: inc.from, fromPubkey: claimed, payload: opened.payload,
                         senderEncPub: opened.senderEncPub, queued: inc.queued, queuedAt: inc.queuedAt)

@@ -43,4 +43,21 @@ public final class IdentitySealing: @unchecked Sendable {
         guard payload.object != nil else { throw SealingError(description: "sealed payload is not an object", code: "bad-payload") }
         return Opened(payload: payload, senderEncPub: from)
     }
+
+    /// Opens a BINARY sealed envelope (`{ bv: 1, k, iv, ct }`, proxy-client ≥ 0.35): `k` is the
+    /// usual envelope with the message key inside, and with it the package comes out of `ct`. Its
+    /// bytes reach the app as base64 (`BinPack.Packed.resolved`).
+    public func openBinary(_ p: BinPack.Packed) throws -> Opened {
+        guard BinPack.isBinSealed(p), let k = p.json["k"], let iv = p.bytes(of: p.json["iv"]), let ct = p.bytes(of: p.json["ct"]) else {
+            throw SealingError(description: "not a binary sealed envelope", code: "not-sealed")
+        }
+        let key = try open(k)
+        guard let cek = key.payload["cek"]?.string else { throw SealingError(description: "the sealed key of a message has no key inside", code: "bad-pack") }
+        let plain: Data
+        do { plain = try Crypto.aesGcmOpen(key: try Crypto.fromB64(cek), iv: iv, ct: ct) }
+        catch { throw SealingError(description: "the message does not open with its key: \(error)", code: "undecipherable") }
+        let payload = try BinPack.unpack(plain).resolved()
+        guard payload.object != nil else { throw SealingError(description: "sealed payload is not an object", code: "bad-payload") }
+        return Opened(payload: payload, senderEncPub: key.senderEncPub)
+    }
 }

@@ -47,6 +47,7 @@ class WebRtcDirect(context: Context) : DirectTransport {
     private var selfToken: () -> String? = { null }
     private var signalSend: (String, JsonObject) -> Unit = { _, _ -> }
     private var deliver: (String, String) -> Unit = { _, _ -> }
+    private var deliverBinary: (String, ByteArray) -> Unit = { _, _ -> }
     private val peers = ConcurrentHashMap<String, Peer>()
 
     /** Who may make me negotiate (null = anyone who can reach me, like the JS default). */
@@ -72,8 +73,13 @@ class WebRtcDirect(context: Context) : DirectTransport {
         val polite: Boolean get() = selfToken()?.let { it < remote } ?: false
     }
 
-    override fun bind(selfToken: () -> String?, signalSend: (String, JsonObject) -> Unit, deliver: (String, String) -> Unit) {
-        this.selfToken = selfToken; this.signalSend = signalSend; this.deliver = deliver
+    override fun bind(
+        selfToken: () -> String?,
+        signalSend: (String, JsonObject) -> Unit,
+        deliver: (String, String) -> Unit,
+        deliverBinary: (String, ByteArray) -> Unit,
+    ) {
+        this.selfToken = selfToken; this.signalSend = signalSend; this.deliver = deliver; this.deliverBinary = deliverBinary
     }
 
     override fun setIceServers(servers: List<DirectTransport.IceServer>) { if (servers.isNotEmpty()) exec.execute { iceServers = servers } }
@@ -219,9 +225,8 @@ class WebRtcDirect(context: Context) : DirectTransport {
                 }
             }
             override fun onMessage(b: DataChannel.Buffer) {
-                if (b.binary) return
                 val bytes = ByteArray(b.data.remaining()).also { b.data.get(it) }
-                deliver(p.remote, String(bytes, Charsets.UTF_8))
+                if (b.binary) deliverBinary(p.remote, bytes) else deliver(p.remote, String(bytes, Charsets.UTF_8))
             }
         })
     }
