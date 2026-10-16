@@ -1,8 +1,8 @@
 // Arnés de punta a punta para `dotrino-native`: levanta un PROXIO y una BÓVEDA de verdad
 // (los de los repos hermanos), enrola una llave de aparato con el pilar JS —firmando por el
 // camino del firmador externo, que es el mismo que usa el teléfono— y deja un pedido de
-// escritura pendiente. La prueba Kotlin (`VaultE2eTest`) se conecta, renueva su papel (no
-// trae `vault:approve` hasta que se le concede), ve el pedido, lo abre y lo aprueba.
+// escritura pendiente. La prueba Kotlin (`VaultE2eTest`) se conecta, ve el pedido, lo abre y
+// lo aprueba con el papel con que se enroló: decide el acta, no el papel (vaultd ≥ 0.131.6).
 //
 //   node test-vectors/e2e-vault.mjs <salida.json>
 //   E2E_HOST=192.168.x.y node … <salida.json>   (proxio alcanzable desde otra máquina: iOS, ver ios/README)
@@ -56,8 +56,8 @@ const enrolled = await enrollDevice({
 // Aprueba: se le concede DESPUÉS de enrolar, como en la vida real. Su papel no lo lleva.
 await vault.setCaps(dev.publickey, ['sign', 'approve'])
 
-// Otro teléfono al que el dueño NO le ha dado `+aprueba`: el caso del 2026-09-25, que en
-// pantalla salía como «invalid renewed paper: scope» y no decía qué hacer.
+// Otro teléfono al que el dueño NO le ha dado `+aprueba`: la bóveda contesta `acta`, y la
+// pantalla dice qué hacer (`caps <ID> +aprueba`).
 const dev2 = await makeDeviceKey({ label: 'phone-no-approve' })
 const enc2 = await makeDeviceEncKey()
 const inv2 = await vault.startPairing({ scope: ['vault:sign'], label: 'phone-no-approve', ttlMs: 120_000, account: 'Cuenta E2E' })

@@ -52,9 +52,11 @@ final class VaultE2eTests: XCTestCase {
         let renewed = OneShot<Account>()
         let vc = VaultClient(account: account, keys: k, conn: conn) { renewed.finish(.success($0)) }
 
+        // The RECORD decides, not the paper (vaultd ≥ 0.131.6): the paper it enrolled with is
+        // enough, and no renewal — renewing signs with the master, which a locked vault lacks.
         let list = try await vc.approvals()
-        let r = try await renewed.wait(timeout: 1, onTimeout: VaultError("the paper was never renewed", code: "no-renew"))
-        XCTAssertTrue(Delegation.scope(r.cert).contains("vault:approve"), "it renewed its paper to get approve")
+        let didRenew = (try? await renewed.wait(timeout: 0.3, onTimeout: VaultError("not renewed", code: "no-renew"))) != nil
+        XCTAssertFalse(didRenew, "it approves with the paper it enrolled with, without renewing")
         let p = try XCTUnwrap(list.first { $0.id == f["pending"]!.string! })
         XCTAssertEqual(p.kind, "write")
         XCTAssertEqual(p.ns, f["ns"]!.string!)
@@ -74,7 +76,7 @@ final class VaultE2eTests: XCTestCase {
         conn.close()
     }
 
-    /// A phone the owner has not given `+aprueba` must be told so (NO_APPROVE), not «invalid renewed paper: scope».
+    /// A phone the owner has not given `+aprueba`: the vault says so with `acta` (vaultd ≥ 0.131.6), not «vault locked» from a renewal.
     func testAPhoneWithoutApproveIsToldSoNotInvalidPaper() async throws {
         let (f, _) = try await harness()
         let n = f["noApprove"]!
@@ -89,7 +91,7 @@ final class VaultE2eTests: XCTestCase {
             _ = try await vc.approvals()
             XCTFail("it must fail: this phone cannot approve")
         } catch let e as VaultError {
-            XCTAssertEqual(e.code, VaultClient.noApprove)
+            XCTAssertEqual(e.code, "acta")
         }
         conn.close()
     }

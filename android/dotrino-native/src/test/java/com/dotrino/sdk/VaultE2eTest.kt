@@ -51,8 +51,10 @@ class VaultE2eTest {
         var renewed: Account? = null
         val vc = VaultClient(account, k, conn) { renewed = it }
 
+        // The RECORD decides, not the paper (vaultd ≥ 0.131.6): the paper it enrolled with is
+        // enough, and no renewal — renewing signs with the master, which a locked vault lacks.
         val list = vc.approvals()
-        assertTrue("it renewed its paper to get approve", renewed != null && "vault:approve" in Delegation.scope(renewed!!.cert))
+        assertTrue("it approves with the paper it enrolled with, without renewing", renewed == null)
         val p = list.single { it.id == f["pending"]!!.jsonPrimitive.content }
         assertEquals("write", p.kind)
         assertEquals(f["ns"]!!.jsonPrimitive.content, p.ns)
@@ -68,10 +70,10 @@ class VaultE2eTest {
     }
 
     /**
-     * A phone the owner has not given `+aprueba` gets a paper without `vault:approve`. That is
-     * not a broken paper: it must come out as NO_APPROVE, which the screen turns into «this
-     * phone does not approve in this account yet: dotrino-vault caps <ID> +aprueba» — not as
-     * «invalid renewed paper: scope», which told the owner nothing (2026-09-25).
+     * A phone the owner has not given `+aprueba`: the record does not let it approve, and the
+     * vault says so with `acta` (vaultd ≥ 0.131.6), which the screen turns into «this phone does
+     * not approve in this account yet: dotrino-vault caps <ID> +aprueba» — not «vault locked»
+     * from a renewal that could never fix it (2026-09-26).
      */
     @Test fun aPhoneWithoutApproveIsToldSoNotInvalidPaper() = runBlocking {
         val path = System.getenv("DOTRINO_E2E")
@@ -89,7 +91,7 @@ class VaultE2eTest {
         val vc = VaultClient(account, k, conn) { }
         val e = try { vc.approvals(); null } catch (x: VaultError) { x }
         assertTrue("it must fail: this phone cannot approve", e != null)
-        assertEquals(VaultClient.NO_APPROVE, e!!.code)
+        assertEquals("acta", e!!.code)
         conn.close()
     }
 }
