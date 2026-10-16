@@ -133,6 +133,8 @@ public final class VaultClient: @unchecked Sendable {
         var d = data
         d["publickey"] = .string(keys.publickey)
         d["ts"] = .int(nowMs())
+        // `machine`: where this phone runs, so the vault shows it in its device list (vaultd ≥ 0.155.0).
+        if let m = Machine.current { d["machine"] = m }
         let signed = JSON.object(d)
         let answer = OneShot<JSON>()
         let off = conn.onMessage { m in

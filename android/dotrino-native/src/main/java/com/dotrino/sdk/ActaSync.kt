@@ -62,6 +62,7 @@ object ActaSync {
         val data = buildJsonObject {
             put("op", "devices"); put("sinceSeq", profile.actaSeq ?: 0)
             put("publickey", profile.publickey); put("ts", System.currentTimeMillis())
+            Machine.current?.let { put("machine", it) }
         }
         val signature = profile.signAsDevice(data)
         val answer = CompletableDeferred<JsonObject>()

@@ -123,7 +123,8 @@ class VaultClient(
     private val lock = Mutex()
 
     private suspend fun rpc(sendType: String, okType: String, data: JsonObject, timeoutMs: Long = 15_000): JsonObject = lock.withLock {
-        val signed = JsonObject(data + mapOf("publickey" to JsonPrimitive(keys.publickey), "ts" to JsonPrimitive(System.currentTimeMillis())))
+        // `machine`: where this phone runs, so the vault shows it in its device list (vaultd ≥ 0.155.0).
+        val signed = JsonObject(data + mapOf("publickey" to JsonPrimitive(keys.publickey), "ts" to JsonPrimitive(System.currentTimeMillis())) + (Machine.current?.let { mapOf("machine" to it) } ?: emptyMap()))
         val answer = CompletableDeferred<JsonObject>()
         val off = conn.onMessage { m ->
             when (m.payload["type"]?.jsonPrimitive?.content) {

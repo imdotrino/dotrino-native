@@ -54,7 +54,9 @@ public enum ActaSync {
 
     /// `requestDevices` of the identity: `{ op: 'devices', sinceSeq }`, signed as this device, with its paper.
     private static func requestDevices(_ profile: Profile, _ v: Profile.VaultLink, _ conn: ProxyConnection, timeout: TimeInterval) async throws -> JSON {
-        let data: JSON = ["op": "devices", "sinceSeq": .int(profile.actaSeq ?? 0), "publickey": .string(profile.publickey), "ts": .int(nowMs())]
+        var fields: [String: JSON] = ["op": "devices", "sinceSeq": .int(profile.actaSeq ?? 0), "publickey": .string(profile.publickey), "ts": .int(nowMs())]
+        if let m = Machine.current { fields["machine"] = m }
+        let data = JSON.object(fields)
         let signature = try profile.signAsDevice(data)
         let answer = OneShot<JSON>()
         let off = conn.onMessage { m in
