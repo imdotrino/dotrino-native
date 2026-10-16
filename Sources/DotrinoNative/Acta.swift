@@ -6,7 +6,7 @@ import Foundation
 /// string, like the JS does. Same piece as `Acta.kt`, checked against the same vectors.
 public enum Acta {
     /// The capabilities this reader knows. One it does not know is not a capability FOR IT.
-    public static let caps = ["sign", "store", "read", "secrets", "admin", "approve", "passwords", "passkeys", "sealer", "unattended", "replica"]
+    public static let caps = ["sign", "store", "read", "secrets", "admin", "approve", "passwords", "sealer", "unattended", "replica"]
 
     public static func effectiveCaps(_ acta: JSON?, _ pub: String, _ extraRenounces: [JSON] = []) -> [String] {
         guard let m = acta?["members"]?.array?.first(where: { $0["pub"]?.string == pub }) else { return [] }

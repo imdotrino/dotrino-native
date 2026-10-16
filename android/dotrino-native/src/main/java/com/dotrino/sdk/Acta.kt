@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object Acta {
     /** The capabilities this reader knows. One it does not know is not a capability FOR IT. */
-    val CAPS = listOf("sign", "store", "read", "secrets", "admin", "approve", "passwords", "passkeys", "sealer", "unattended", "replica")
+    val CAPS = listOf("sign", "store", "read", "secrets", "admin", "approve", "passwords", "sealer", "unattended", "replica")
 
     private fun member(acta: JsonObject?, pub: String): JsonObject? =
         (acta?.get("members") as? JsonArray)?.firstOrNull { (it as? JsonObject)?.get("pub")?.let { p -> (p as? JsonPrimitive)?.content } == pub } as? JsonObject
