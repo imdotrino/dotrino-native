@@ -25,8 +25,13 @@ import android.media.MediaPlayer
  *
  * Y EL TRINO DE TERMINADO ([playDone]): OTRO trino, para «lo que pediste ya acabó» (una consola
  * de Dotrino Terminal que terminó), distinto del de aviso para que se distingan de oído (dueño,
- * 2026-10-14). Es `sound/trinos/trino-02b.wav`, convertido igual (`dotrino_done.ogg` /
- * `dotrino-done.caf`); en la web, `playDone` de `@dotrino/notifications/ring`.
+ * 2026-10-14). Es `sound/trinos/trino-02b.wav`, convertido igual (`dotrino_done_<nivel>.ogg` /
+ * `dotrino-done-<nivel>.caf`); en la web, `playDone` de `@dotrino/notifications/ring`.
+ *
+ * Tiene tres versiones (dueño, 2026-10-17), las mismas de la app de escritorio del terminal:
+ * `high` es el original, y `standard` y `low` van 4,5 y 12,5 dB por debajo
+ * (`sound/trinos/trino-02b-<nivel>.wav`). Dotrino Terminal toca la `low`: junto a una terminal el
+ * original sonaba muy fuerte.
  */
 object DotrinoRing {
 
@@ -63,8 +68,13 @@ object DotrinoRing {
      */
     fun play(ctx: Context) = play(ctx, R.raw.dotrino_ring)
 
+    /** The three versions of the "done" trino. [HIGH] is the original. */
+    enum class Level(internal val res: Int) {
+        LOW(R.raw.dotrino_done_low), STANDARD(R.raw.dotrino_done_standard), HIGH(R.raw.dotrino_done_high)
+    }
+
     /** Toca el trino de TERMINADO (lo que pediste ya acabó), con las mismas reglas que [play]. */
-    fun playDone(ctx: Context) = play(ctx, R.raw.dotrino_done)
+    fun playDone(ctx: Context, level: Level = Level.HIGH) = play(ctx, level.res)
 
     private fun play(ctx: Context, res: Int) {
         val am = ctx.getSystemService(AudioManager::class.java)

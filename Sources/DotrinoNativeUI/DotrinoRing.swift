@@ -11,7 +11,10 @@ import Foundation
 ///
 /// Y EL TRINO DE TERMINADO (`playDone`): OTRO trino, para «lo que pediste ya acabó» (una consola de
 /// Dotrino Terminal que terminó), distinto del de aviso para que se distingan de oído (dueño,
-/// 2026-10-14). Es `sound/trinos/trino-02b.wav` (`dotrino-done.caf`); el mismo en Android y en la web.
+/// 2026-10-14). Es `sound/trinos/trino-02b.wav` (`dotrino-done-<nivel>.caf`); el mismo en Android y en la web.
+///
+/// Tiene tres versiones (dueño, 2026-10-17): `high` es el original, y `standard` y `low` van 4,5 y
+/// 12,5 dB por debajo (`sound/trinos/trino-02b-<nivel>.wav`). Dotrino Terminal toca la `low`.
 public enum DotrinoRing {
     /// El nombre del trino, para un aviso local (`UNNotificationSound(named:)`).
     public static var soundName: String { DotrinoPush.ringName }
@@ -22,8 +25,11 @@ public enum DotrinoRing {
     /// Toca el trino ahora.
     public static func play() { play("dotrino-ring") }
 
+    /// The three versions of the "done" trino. `high` is the original.
+    public enum Level: String { case low, standard, high }
+
     /// Toca el trino de TERMINADO (lo que pediste ya acabó).
-    public static func playDone() { play("dotrino-done") }
+    public static func playDone(_ level: Level = .high) { play("dotrino-done-\(level.rawValue)") }
 
     private static func play(_ name: String) {
         let sid: SystemSoundID? = lock.withLock {
