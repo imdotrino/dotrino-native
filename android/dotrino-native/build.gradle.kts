@@ -14,6 +14,7 @@ android {
     defaultConfig {
         minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")   // R8 en las apps (ver el archivo)
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
