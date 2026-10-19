@@ -97,7 +97,7 @@ final class GoldenVectorsTests: XCTestCase {
     }
 
     func testUnauthorizedReasonIsTheCode() {
-        XCTAssertEqual(VaultClient.codeOf("unauthorized: acta-vieja (seq 3)"), "acta-vieja")
+        XCTAssertEqual(VaultClient.codeOf("unauthorized: stale-record (seq 3)"), "stale-record")
         XCTAssertEqual(VaultClient.codeOf("something else"), "vault-error")
     }
 }

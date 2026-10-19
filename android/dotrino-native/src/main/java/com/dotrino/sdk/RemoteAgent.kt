@@ -118,10 +118,10 @@ object RemoteAgent {
         val sig = cert["sig"]?.jsonPrimitive?.content ?: return "shape"
         // A paper of the old model carried a date and no record number. They are retired here:
         // a native app was never issued one, and accepting it would be a rule with no test.
-        val seq = cert["seq"]?.jsonPrimitive?.longOrNull ?: return "legacy-cert-retirado"
+        val seq = cert["seq"]?.jsonPrimitive?.longOrNull ?: return "legacy-cert-retired"
         if (!Crypto.verify(iss, Delegation.body(cert), sig)) return "bad-signature"
         val actaSeq = acta?.get("seq")?.jsonPrimitive?.longOrNull ?: return "no-acta"
-        if (seq > actaSeq) return "acta-vieja"
+        if (seq > actaSeq) return "stale-record"
         if (iss !in Acta.sealersOf(acta)) return "untrusted-issuer"
         return null
     }
@@ -168,8 +168,8 @@ object RemoteAgent {
         profile: Profile, conn: ProxyConnection, agentPubkey: String, timeoutMs: Long = 20_000,
         /**
          * Puts this phone's record up to date ([PhoneIdentity.catchUp]). Called ONCE, when the
-         * agent's paper names a newer record than mine (`acta-vieja`), and the ack is judged
-         * again against what it returns. Without it, `acta-vieja` stops the session.
+         * agent's paper names a newer record than mine (`stale-record`), and the ack is judged
+         * again against what it returns. Without it, `stale-record` stops the session.
          */
         catchUp: (suspend () -> Profile)? = null,
     ): Session {
@@ -207,7 +207,7 @@ object RemoteAgent {
         var why = judge(ack, ackSig, ackCert, profile.acta)
         // The agent's paper is from a record newer than mine: the vault changed it and this phone
         // has not heard. Catch up and judge again — once; what still fails is said as it is.
-        if (why == "acta-vieja" && catchUp != null) why = judge(ack, ackSig, ackCert, catchUp().acta)
+        if (why == "stale-record" && catchUp != null) why = judge(ack, ackSig, ackCert, catchUp().acta)
         why?.let { throw RemoteAgentError("that agent is not certified by your vault: $it", "not-mine") }
         if (!Delegation.samePubkey(ack["machine"]?.jsonPrimitive?.content, agentPubkey)) throw RemoteAgentError("the ack came from another agent", "bad-ack")
         if (ack["ceph"]?.jsonPrimitive?.content != ephPub || ack["sid"]?.jsonPrimitive?.content != sid) throw RemoteAgentError("the ack is not for this handshake", "bad-ack")

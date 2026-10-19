@@ -83,7 +83,7 @@ class RemoteAgentE2eTest {
 
     /**
      * The phone holds a record OLDER than the agent's paper (the vault changed it after the phone
-     * paired): without catching up the handshake stops with `acta-vieja`; with [ActaSync] the
+     * paired): without catching up the handshake stops with `stale-record`; with [ActaSync] the
      * phone asks its vault, adopts the chain, keeps it where the identity reads it, and the
      * console opens.
      */
@@ -98,7 +98,7 @@ class RemoteAgentE2eTest {
         try {
             conn.identifyAs(stale.publickey) { stale.signData(it) }
             val refused = runCatching { RemoteAgent.open(stale, conn, agent) }.exceptionOrNull()
-            assertTrue("without catching up: ${refused?.message}", refused is RemoteAgent.RemoteAgentError && "acta-vieja" in refused.message.orEmpty())
+            assertTrue("without catching up: ${refused?.message}", refused is RemoteAgent.RemoteAgentError && "stale-record" in refused.message.orEmpty())
 
             val saved = HashMap<String, String>()
             var caughtUp: Profile? = null

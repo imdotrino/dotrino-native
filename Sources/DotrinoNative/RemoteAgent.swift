@@ -66,10 +66,10 @@ public enum RemoteAgent {
         guard let cert, cert["sub"]?.string == device else { return "cert-device-mismatch" }
         guard let iss = cert["iss"]?.string, let sig = cert["sig"]?.string else { return "shape" }
         // A paper of the old model carried a date and no record number: retired here (as in Kotlin).
-        guard let seq = cert["seq"]?.int else { return "legacy-cert-retirado" }
+        guard let seq = cert["seq"]?.int else { return "legacy-cert-retired" }
         if !Crypto.verify(publickey: iss, data: Delegation.body(cert), signature: sig) { return "bad-signature" }
         guard let actaSeq = acta?["seq"]?.int else { return "no-acta" }
-        if seq > actaSeq { return "acta-vieja" }
+        if seq > actaSeq { return "stale-record" }
         if !Acta.sealersOf(acta).contains(iss) { return "untrusted-issuer" }
         return nil
     }
@@ -119,8 +119,8 @@ public enum RemoteAgent {
     /// no), `not-mine` (the ack does not hold against the record, with the reason), `bad-ack`.
     ///
     /// [catchUp] puts this phone's record up to date ([ActaSync.catchUp]): called ONCE, when the
-    /// agent's paper names a newer record than mine (`acta-vieja`), and the ack is judged again
-    /// against what it returns. Without it, `acta-vieja` stops the session.
+    /// agent's paper names a newer record than mine (`stale-record`), and the ack is judged again
+    /// against what it returns. Without it, `stale-record` stops the session.
     public static func open(_ profile: Profile, _ conn: ProxyConnection, _ agentPubkey: String, timeout: TimeInterval = 20,
                             catchUp: (() async throws -> Profile)? = nil) async throws -> Session {
         guard let cert = profile.vault?.cert else { throw RemoteAgentError("this profile is not linked to a vault", code: "no-vault") }
@@ -153,7 +153,7 @@ public enum RemoteAgent {
         var why = judge(a, ackSig, ackCert, profile.record)
         // The agent's paper is from a record newer than mine: the vault changed it and this phone
         // has not heard. Catch up and judge again — once; what still fails is said as it is.
-        if why == "acta-vieja", let catchUp { why = judge(a, ackSig, ackCert, try await catchUp().record) }
+        if why == "stale-record", let catchUp { why = judge(a, ackSig, ackCert, try await catchUp().record) }
         if let why { throw RemoteAgentError("that agent is not certified by your vault: \(why)", code: "not-mine") }
         if !Delegation.samePubkey(a["machine"]?.string, agentPubkey) { throw RemoteAgentError("the ack came from another agent", code: "bad-ack") }
         if a["ceph"]?.string != ephPub || a["sid"]?.string != sid { throw RemoteAgentError("the ack is not for this handshake", code: "bad-ack") }

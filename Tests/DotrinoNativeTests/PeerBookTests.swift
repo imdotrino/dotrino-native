@@ -15,11 +15,11 @@ final class PeerBookTests: XCTestCase {
         let card = try XCTUnwrap(try peers()["card"])
         XCTAssertTrue(PeerBook.verifyCard(card))
         let b = book()
-        XCTAssertEqual(try b.adoptPeerCard(card), .init(adopted: true, reason: "primera-vez", devices: 1))
+        XCTAssertEqual(try b.adoptPeerCard(card), .init(adopted: true, reason: "first-time", devices: 1))
         var forged = card.object!; forged["seq"] = 99
         XCTAssertFalse(PeerBook.verifyCard(.object(forged)))
-        XCTAssertEqual(try b.adoptPeerCard(.object(forged)).reason, "firma-invalida")
-        XCTAssertEqual(try b.adoptPeerCard(card).reason, "igual")
+        XCTAssertEqual(try b.adoptPeerCard(.object(forged)).reason, "invalid-signature")
+        XCTAssertEqual(try b.adoptPeerCard(card).reason, "same")
     }
 
     func testTheCardIsTheAccountsAndTheDeviceThatBringsItProvesIt() throws {

@@ -70,7 +70,7 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
         private fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.longOrNull
     }
 
-    /** Why a card was (not) adopted: `primera-vez`, `seq-mayor`, `igual` | `firma-invalida`, `otro-perfil`, `seq-menor`, `master-cambiado`. */
+    /** Why a card was (not) adopted: `first-time`, `higher-seq`, `same` | `invalid-signature`, `other-profile`, `lower-seq`, `master-changed`. */
     data class CardAdoption(val adopted: Boolean, val reason: String, val devices: Int)
 
     private val lock = Mutex()
@@ -200,19 +200,19 @@ class PeerBook(private val storage: Storage, private val profile: Profile) {
      * changed master is SAID, never accepted quietly.
      */
     suspend fun adoptPeerCard(card: JsonObject): CardAdoption = change { peers ->
-        val profileId = card.str("profileId") ?: return@change CardAdoption(false, "firma-invalida", 0)
+        val profileId = card.str("profileId") ?: return@change CardAdoption(false, "invalid-signature", 0)
         val current = peers[profileId]?.get("card") as? JsonObject
         val devices = (current?.get("keys") as? JsonArray)?.size ?: 0
         val reason = when {
-            !verifyCard(card) -> "firma-invalida"
-            current != null && current.str("profileId") != profileId -> "otro-perfil"
-            current == null -> "primera-vez"
-            (card.long("seq") ?: 0) < (current.long("seq") ?: 0) -> "seq-menor"
-            card.str("sealedBy") != current.str("sealedBy") -> "master-cambiado"
-            (card.long("seq") ?: 0) > (current.long("seq") ?: 0) -> "seq-mayor"
-            else -> "igual"
+            !verifyCard(card) -> "invalid-signature"
+            current != null && current.str("profileId") != profileId -> "other-profile"
+            current == null -> "first-time"
+            (card.long("seq") ?: 0) < (current.long("seq") ?: 0) -> "lower-seq"
+            card.str("sealedBy") != current.str("sealedBy") -> "master-changed"
+            (card.long("seq") ?: 0) > (current.long("seq") ?: 0) -> "higher-seq"
+            else -> "same"
         }
-        if (reason in setOf("firma-invalida", "otro-perfil", "seq-menor", "master-cambiado")) return@change CardAdoption(false, reason, devices)
+        if (reason in setOf("invalid-signature", "other-profile", "lower-seq", "master-changed")) return@change CardAdoption(false, reason, devices)
         upsert(peers, profileId, mapOf("card" to card, "profileId" to JsonPrimitive(profileId)))
         CardAdoption(true, reason, (card["keys"] as? JsonArray)?.size ?: 0)
     }

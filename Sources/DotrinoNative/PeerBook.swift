@@ -26,7 +26,7 @@ public final class PeerBook: @unchecked Sendable {
         public func save(_ text: String) throws { try IdentityStore.shared.set(key, text) }
     }
 
-    /// Why a card was (not) adopted: `primera-vez`, `seq-mayor`, `igual` | `firma-invalida`, `otro-perfil`, `seq-menor`, `master-cambiado`.
+    /// Why a card was (not) adopted: `first-time`, `higher-seq`, `same` | `invalid-signature`, `other-profile`, `lower-seq`, `master-changed`.
     public struct CardAdoption: Equatable, Sendable {
         public let adopted: Bool
         public let reason: String
@@ -191,19 +191,19 @@ public final class PeerBook: @unchecked Sendable {
     @discardableResult
     public func adoptPeerCard(_ card: JSON) throws -> CardAdoption {
         try change { peers in
-            guard let profileId = card["profileId"]?.string else { return CardAdoption(adopted: false, reason: "firma-invalida", devices: 0) }
+            guard let profileId = card["profileId"]?.string else { return CardAdoption(adopted: false, reason: "invalid-signature", devices: 0) }
             let current = peers[profileId]?["card"]?.objectValue
             let devices = current?["keys"]?.array?.count ?? 0
             let seq = card["seq"]?.int ?? 0, curSeq = current?["seq"]?.int ?? 0
             let reason: String
-            if !Self.verifyCard(card) { reason = "firma-invalida" }
-            else if let current, current["profileId"]?.string != profileId { reason = "otro-perfil" }
-            else if current == nil { reason = "primera-vez" }
-            else if seq < curSeq { reason = "seq-menor" }
-            else if card["sealedBy"]?.string != current?["sealedBy"]?.string { reason = "master-cambiado" }
-            else if seq > curSeq { reason = "seq-mayor" }
-            else { reason = "igual" }
-            if ["firma-invalida", "otro-perfil", "seq-menor", "master-cambiado"].contains(reason) {
+            if !Self.verifyCard(card) { reason = "invalid-signature" }
+            else if let current, current["profileId"]?.string != profileId { reason = "other-profile" }
+            else if current == nil { reason = "first-time" }
+            else if seq < curSeq { reason = "lower-seq" }
+            else if card["sealedBy"]?.string != current?["sealedBy"]?.string { reason = "master-changed" }
+            else if seq > curSeq { reason = "higher-seq" }
+            else { reason = "same" }
+            if ["invalid-signature", "other-profile", "lower-seq", "master-changed"].contains(reason) {
                 return CardAdoption(adopted: false, reason: reason, devices: devices)
             }
             upsert(&peers, profileId, ["card": card, "profileId": .string(profileId)])

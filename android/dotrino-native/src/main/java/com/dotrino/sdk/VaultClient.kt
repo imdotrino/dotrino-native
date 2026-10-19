@@ -157,7 +157,7 @@ class VaultClient(
      * would only hide the reason.
      */
     private suspend fun <T> withPaper(block: suspend () -> T): T = try { block() } catch (e: VaultError) {
-        if (e.code in setOf("scope", "acta-vieja", "untrusted-issuer", "expired", "legacy-cert-retirado", "no-acta")) { renew(); block() } else throw e
+        if (e.code in setOf("scope", "stale-record", "untrusted-issuer", "expired", "legacy-cert-retired", "no-acta")) { renew(); block() } else throw e
     }
 
     /** A new paper for my key. Accepted only if it is from the vault I enrolled with, for my key, and lets me approve. */

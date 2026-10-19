@@ -81,7 +81,7 @@ final class RemoteAgentE2eTests: XCTestCase {
     }
 
     /// The phone holds a record OLDER than the agent's paper: without catching up it is
-    /// `acta-vieja`; with [ActaSync] it adopts the vault's record, keeps it, and the session opens.
+    /// `stale-record`; with [ActaSync] it adopts the vault's record, keeps it, and the session opens.
     func testAnOlderRecordIsBroughtUpToDateFromTheVault() async throws {
         let f = try await harness(), stale = try profile(f, "staleActa")
         let newest = f["acta"]!
@@ -92,7 +92,7 @@ final class RemoteAgentE2eTests: XCTestCase {
         do {
             _ = try await RemoteAgent.open(stale, conn, agent)
             XCTFail("an older record must not open")
-        } catch let e as RemoteAgent.RemoteAgentError { XCTAssertTrue(e.description.contains("acta-vieja"), e.description) }
+        } catch let e as RemoteAgent.RemoteAgentError { XCTAssertTrue(e.description.contains("stale-record"), e.description) }
 
         let saved = Locked<[String: String]>([:])
         let caught = Locked<Profile?>(nil)

@@ -47,7 +47,7 @@ const phone = await enrollDevice({ qr: await invite('phone'), device: { publicke
 
 // El AGENTE DE TERMINAL, el de verdad: se enrola como cualquier máquina y abre shells con su PTY.
 // El acta que tenía el teléfono al emparejarse, ANTES de que entrara el agente: el papel del
-// agente sale de una posterior, y con esta el teléfono contesta `acta-vieja` (lo que le pasaba a
+// agente sale de una posterior, y con esta el teléfono contesta `stale-record` (lo que le pasaba a
 // la terminal de Android hasta que algo abría una página web de la identidad).
 const staleActa = (await vault.identity.profileActa()).acta
 

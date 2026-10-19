@@ -81,7 +81,7 @@ class RemoteAgentTest {
         assertEquals("cert-device-mismatch", RemoteAgent.judge(ack, sig, null, acta))
         // A paper that names a record newer than mine: I cannot judge it.
         val (acta2, cert2, ack2) = world(sealer, agent, sealer, seq = 50, actaSeq = 44)
-        assertEquals("acta-vieja", RemoteAgent.judge(ack2, agent.sign(Canonical.stringify(ack2)), cert2, acta2))
+        assertEquals("stale-record", RemoteAgent.judge(ack2, agent.sign(Canonical.stringify(ack2)), cert2, acta2))
         // A well-signed paper from someone who does not seal this profile.
         val (acta3, cert3, ack3) = world(sealer, agent, stranger, seq = 40, actaSeq = 44)
         assertEquals("untrusted-issuer", RemoteAgent.judge(ack3, agent.sign(Canonical.stringify(ack3)), cert3, acta3))

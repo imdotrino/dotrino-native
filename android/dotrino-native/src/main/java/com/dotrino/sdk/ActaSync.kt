@@ -17,7 +17,7 @@ import kotlinx.serialization.json.put
  * Without this a native app judged other devices against the record it found in the identity
  * app, and that one only moved when some WebView of the identity ran. The vault changed its
  * record (a new device, a permission), re-issued the agents' papers with the new `seq`, and the
- * phone answered every one of them with `acta-vieja` until someone opened a web page.
+ * phone answered every one of them with `stale-record` until someone opened a web page.
  *
  * Nothing is taken on the vault's word: each record of the chain must verify and chain from
  * the one adopted before it ([Acta.canAdopt]), as the identity does. What is adopted is
@@ -50,7 +50,7 @@ object ActaSync {
         if (adopted == null) {
             val why = candidates.maxByOrNull { (it["seq"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0 }?.let { Acta.canAdopt(it, current).second }
             // The same record as mine: there is nothing newer, which is not an error.
-            if (why == "misma-acta" || why == "seq-menor") return profile
+            if (why == "same-record" || why == "lower-seq") return profile
             throw ActaSyncError("the vault's record does not chain from this phone's: $why", "not-adopted")
         }
         profile.pid?.let { save(Profile.actaKey(it), adopted.toString()) }

@@ -85,7 +85,7 @@ public enum Acta {
         if !isNull(acta["chainUrl"]) && !(acta["chainUrl"]?.string.map(isChainUrl) ?? false) { return "chainurl" }
         let oldField = v < vNoSealerField
         if oldField && !isPub(acta["sealer"]) { return "shape" }
-        if !oldField && !isNull(acta["sealer"]) { return "sealer-no-va-en-v3" }
+        if !oldField && !isNull(acta["sealer"]) { return "sealer-not-in-v3" }
         guard let seq = acta["seq"]?.int, seq >= 1 else { return "seq" }
         if seq > 1 && acta["prev"]?.string == nil { return "prev" }
         guard let members = acta["members"]?.array, !members.isEmpty else { return "members" }
@@ -94,29 +94,29 @@ public enum Acta {
             // An unknown permission is ignored, not an invalid record (it grants nothing to this reader).
             if caps.contains(where: { ($0.string ?? "").isEmpty }) { return "member" }
             if !isNull(m["cn"]) {
-                guard let cn = m["cn"]?.string, cn.range(of: "^[a-z0-9-]{1,32}$", options: .regularExpression) != nil else { return "cn-invalido" }
-            } else if caps.contains(where: { $0.string == "secrets" }) { return "secretos-sin-cn" }
-            if !isNull(m["encPub"]) && !(m["encPub"]?.string.map(isEncPub) ?? false) { return "encpub-invalido" }
+                guard let cn = m["cn"]?.string, cn.range(of: "^[a-z0-9-]{1,32}$", options: .regularExpression) != nil else { return "invalid-cn" }
+            } else if caps.contains(where: { $0.string == "secrets" }) { return "secrets-without-cn" }
+            if !isNull(m["encPub"]) && !(m["encPub"]?.string.map(isEncPub) ?? false) { return "invalid-encpub" }
         }
         if v >= 2 {
             if !isNull(acta["sealPub"]) {
-                if !isPub(acta["sealPub"]) { return "sealpub-invalido" }
+                if !isPub(acta["sealPub"]) { return "invalid-sealpub" }
                 guard let since = acta["sealSince"]?.int, since >= 1, since <= seq else { return "sealsince" }
             } else if truthy(acta["sealSince"]) { return "sealsince" }
             guard let keys = acta["sealKeys"]?.array else { return "sealkeys" }
             for k in keys {
-                if !isPub(k["pub"]) { return "sealkey-invalida" }
-                guard let from = k["from"]?.int, let to = k["to"]?.int, from >= 1, to >= from else { return "sealkey-rango" }
+                if !isPub(k["pub"]) { return "invalid-sealkey" }
+                guard let from = k["from"]?.int, let to = k["to"]?.int, from >= 1, to >= from else { return "sealkey-range" }
             }
         }
         let pubs = members.compactMap { $0["pub"]?.string }
-        if Set(pubs).count != pubs.count { return "miembro-duplicado" }
-        if sealersOf(acta).isEmpty { return "sin-sellador" }
+        if Set(pubs).count != pubs.count { return "duplicate-member" }
+        if sealersOf(acta).isEmpty { return "no-sealer" }
         if !isNull(acta["sealerAnchor"]) {
             guard let a = acta["sealerAnchor"], a.object != nil, let aseq = a["seq"]?.int, aseq >= 1, aseq < seq,
                   let h = a["hash"]?.string, h.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else { return "sealeranchor" }
         }
-        if !members.contains(where: { ($0["caps"]?.array ?? []).contains(where: { $0.string == "sign" }) }) { return "sin-firmante" }
+        if !members.contains(where: { ($0["caps"]?.array ?? []).contains(where: { $0.string == "sign" }) }) { return "no-signer" }
         return nil
     }
 
@@ -124,26 +124,26 @@ public enum Acta {
     public static func checkSealerLink(_ acta: JSON) -> String? {
         let v = acta["v"]?.int ?? 0
         let changed = acta["sealerChanged"]?.bool == true
-        if isNull(acta["sealerLink"]) { return changed && v >= 5 ? "eslabon-ausente" : nil }
-        guard let l = acta["sealerLink"], l.object != nil, l["v"]?.int == sealerLinkV else { return "eslabon-version" }
-        if l["sig"]?.string == nil { return "eslabon-sin-firma" }
-        if l["profileId"]?.string != acta["profileId"]?.string { return "eslabon-otro-perfil" }
-        guard let seq = acta["seq"]?.int else { return "eslabon-otro-seq" }
+        if isNull(acta["sealerLink"]) { return changed && v >= 5 ? "link-missing" : nil }
+        guard let l = acta["sealerLink"], l.object != nil, l["v"]?.int == sealerLinkV else { return "link-version" }
+        if l["sig"]?.string == nil { return "link-unsigned" }
+        if l["profileId"]?.string != acta["profileId"]?.string { return "link-other-profile" }
+        guard let seq = acta["seq"]?.int else { return "link-other-seq" }
         if changed {
-            if l["seq"]?.int != seq { return "eslabon-otro-seq" }
-            if l["by"]?.string != acta["sealedBy"]?.string { return "eslabon-otro-sellador" }
-        } else if !((l["seq"]?.int ?? Int64.max) < seq) { return "eslabon-del-futuro" }
+            if l["seq"]?.int != seq { return "link-other-seq" }
+            if l["by"]?.string != acta["sealedBy"]?.string { return "link-other-sealer" }
+        } else if !((l["seq"]?.int ?? Int64.max) < seq) { return "link-from-future" }
         let says = (l["sealers"]?.array ?? []).compactMap(\.string).sorted().joined(separator: "|")
-        if says != sealersOf(acta).sorted().joined(separator: "|") { return "eslabon-no-cuadra" }
+        if says != sealersOf(acta).sorted().joined(separator: "|") { return "link-mismatch" }
         return nil
     }
 
     /// `verifyActa`: well formed, signed by who says it sealed it, and its link agrees. The reason it is not, or nil.
     public static func verify(_ acta: JSON?, expectedProfileId: String? = nil) -> String? {
         if let bad = checkShape(acta) { return bad }
-        guard let acta, let sig = acta["sig"]?.string else { return "sin-firma" }
-        if let expectedProfileId, acta["profileId"]?.string != expectedProfileId { return "otro-perfil" }
-        guard let by = acta["sealedBy"]?.string, Crypto.verify(publickey: by, data: body(acta), signature: sig) else { return "firma-invalida" }
+        guard let acta, let sig = acta["sig"]?.string else { return "unsigned" }
+        if let expectedProfileId, acta["profileId"]?.string != expectedProfileId { return "other-profile" }
+        guard let by = acta["sealedBy"]?.string, Crypto.verify(publickey: by, data: body(acta), signature: sig) else { return "invalid-signature" }
         return checkSealerLink(acta)
     }
 
@@ -152,21 +152,21 @@ public enum Acta {
     /// never back. Returns (adopt, reason) with the JS reasons.
     public static func canAdopt(_ candidate: JSON, _ current: JSON?) -> (adopt: Bool, reason: String) {
         if let bad = verify(candidate, expectedProfileId: current?["profileId"]?.string) { return (false, bad) }
-        guard let current else { return (true, "sin-acta-previa") }
+        guard let current else { return (true, "no-previous-record") }
         let cs = candidate["seq"]?.int ?? 0, ks = current["seq"]?.int ?? 0
         let by = candidate["sealedBy"]?.string
         guard let hc = try? hash(candidate), let hk = try? hash(current) else { return (false, "hash") }
         if cs > ks {
-            if !canSeal(current, by) { return (false, "sellador-no-autorizado") }
-            if cs == ks + 1 && candidate["prev"]?.string != hk { return (false, "no-encadena") }
-            return (true, "seq-mayor")
+            if !canSeal(current, by) { return (false, "unauthorized-sealer") }
+            if cs == ks + 1 && candidate["prev"]?.string != hk { return (false, "not-chained") }
+            return (true, "higher-seq")
         }
         if cs == ks {
-            if hc == hk { return (false, "misma-acta") }
-            if by != current["sealedBy"]?.string && !canSeal(current, by) { return (false, "otro-sellador") }
-            return (hc < hk, "desempate-hash")
+            if hc == hk { return (false, "same-record") }
+            if by != current["sealedBy"]?.string && !canSeal(current, by) { return (false, "other-sealer") }
+            return (hc < hk, "hash-tiebreak")
         }
-        return (false, "seq-menor")
+        return (false, "lower-seq")
     }
 
     /// `adoptChain`: catch up link by link, each judged against the one adopted before it (never

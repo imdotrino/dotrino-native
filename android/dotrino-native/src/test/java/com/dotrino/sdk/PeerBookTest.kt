@@ -22,13 +22,13 @@ class PeerBookTest {
         val card = p.getValue("card").jsonObject
         assertTrue(PeerBook.verifyCard(card))
         val b = book()
-        assertEquals(PeerBook.CardAdoption(true, "primera-vez", 1), b.adoptPeerCard(card))
+        assertEquals(PeerBook.CardAdoption(true, "first-time", 1), b.adoptPeerCard(card))
         // One key more, same signature: forged.
         val forged = JsonObject(card + ("seq" to JsonPrimitive(99)))
         assertFalse(PeerBook.verifyCard(forged))
-        assertEquals("firma-invalida", b.adoptPeerCard(forged).reason)
+        assertEquals("invalid-signature", b.adoptPeerCard(forged).reason)
         // Older than what I have: refused.
-        assertEquals("igual", b.adoptPeerCard(card).reason)
+        assertEquals("same", b.adoptPeerCard(card).reason)
     }
 
     @Test fun theCardIsTheAccountsAndTheDeviceThatBringsItProvesIt() = runBlocking {

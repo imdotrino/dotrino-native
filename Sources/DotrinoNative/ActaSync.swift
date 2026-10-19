@@ -7,7 +7,7 @@ import Foundation
 /// Without it a native app judged other devices against the record it found in the shared
 /// store, and that one only moved when a WebView of the identity ran: the vault changed its
 /// record, re-issued the agents' papers with the new `seq`, and the phone answered each of them
-/// with `acta-vieja`.
+/// with `stale-record`.
 ///
 /// Nothing is taken on the vault's word: each record of the chain must verify and chain from
 /// the one adopted before it ([Acta.canAdopt]). What is adopted is written back to the shared
@@ -40,7 +40,7 @@ public enum ActaSync {
             let newest = candidates.max { ($0["seq"]?.int ?? 0) < ($1["seq"]?.int ?? 0) }!
             let why = Acta.canAdopt(newest, current).reason
             // The same record as mine, or an older one: there is nothing newer, which is not an error.
-            if why == "misma-acta" || why == "seq-menor" { return profile }
+            if why == "same-record" || why == "lower-seq" { return profile }
             throw ActaSyncError("the vault's record does not chain from this phone's: \(why)", code: "not-adopted")
         }
         if let pid = profile.pid { try save(Profile.actaKey(pid), adopted.text) }

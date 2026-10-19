@@ -53,7 +53,7 @@ final class RemoteAgentTests: XCTestCase {
         XCTAssertEqual(RemoteAgent.judge(ack, try stranger.sign(Canonical.stringify(ack)), cert, acta), "bad-action-signature")
         XCTAssertEqual(RemoteAgent.judge(ack, sig, nil, acta), "cert-device-mismatch")
         let (acta2, cert2, ack2) = try world(sealer, agent, sealer, seq: 50, actaSeq: 44)
-        XCTAssertEqual(RemoteAgent.judge(ack2, try agent.sign(Canonical.stringify(ack2)), cert2, acta2), "acta-vieja")
+        XCTAssertEqual(RemoteAgent.judge(ack2, try agent.sign(Canonical.stringify(ack2)), cert2, acta2), "stale-record")
         let (acta3, cert3, ack3) = try world(sealer, agent, stranger, seq: 40, actaSeq: 44)
         XCTAssertEqual(RemoteAgent.judge(ack3, try agent.sign(Canonical.stringify(ack3)), cert3, acta3), "untrusted-issuer")
     }

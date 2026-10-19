@@ -111,7 +111,7 @@ object Acta {
         if (!isNull(acta["chainUrl"]) && !(str(acta["chainUrl"])?.let(::isChainUrl) ?: false)) return "chainurl"
         val oldField = v < V_NO_SEALER_FIELD
         if (oldField && !isPub(acta["sealer"])) return "shape"
-        if (!oldField && !isNull(acta["sealer"])) return "sealer-no-va-en-v3"
+        if (!oldField && !isNull(acta["sealer"])) return "sealer-not-in-v3"
         val seq = int(acta["seq"])
         if (seq == null || seq < 1) return "seq"
         if (seq > 1 && str(acta["prev"]) == null) return "prev"
@@ -124,34 +124,34 @@ object Acta {
             // An unknown permission is ignored, not an invalid record (it grants nothing to this reader).
             if (caps.any { str(it).isNullOrEmpty() }) return "member"
             if (!isNull(m["cn"])) {
-                if (!(str(m["cn"])?.let { CN.matches(it) } ?: false)) return "cn-invalido"
-            } else if (caps.any { str(it) == "secrets" }) return "secretos-sin-cn"
-            if (!isNull(m["encPub"]) && !(str(m["encPub"])?.let(::isEncPub) ?: false)) return "encpub-invalido"
+                if (!(str(m["cn"])?.let { CN.matches(it) } ?: false)) return "invalid-cn"
+            } else if (caps.any { str(it) == "secrets" }) return "secrets-without-cn"
+            if (!isNull(m["encPub"]) && !(str(m["encPub"])?.let(::isEncPub) ?: false)) return "invalid-encpub"
         }
         if (v >= 2) {
             if (!isNull(acta["sealPub"])) {
-                if (!isPub(acta["sealPub"])) return "sealpub-invalido"
+                if (!isPub(acta["sealPub"])) return "invalid-sealpub"
                 val since = int(acta["sealSince"])
                 if (since == null || since < 1 || since > seq) return "sealsince"
             } else if (truthy(acta["sealSince"])) return "sealsince"
             val keys = acta["sealKeys"] as? JsonArray ?: return "sealkeys"
             for (e in keys) {
-                val k = e as? JsonObject ?: return "sealkey-invalida"
-                if (!isPub(k["pub"])) return "sealkey-invalida"
+                val k = e as? JsonObject ?: return "invalid-sealkey"
+                if (!isPub(k["pub"])) return "invalid-sealkey"
                 val from = int(k["from"]); val to = int(k["to"])
-                if (from == null || to == null || from < 1 || to < from) return "sealkey-rango"
+                if (from == null || to == null || from < 1 || to < from) return "sealkey-range"
             }
         }
         val pubs = members.map { str((it as JsonObject)["pub"]) }
-        if (pubs.toSet().size != pubs.size) return "miembro-duplicado"
-        if (sealersOf(acta).isEmpty()) return "sin-sellador"
+        if (pubs.toSet().size != pubs.size) return "duplicate-member"
+        if (sealersOf(acta).isEmpty()) return "no-sealer"
         if (!isNull(acta["sealerAnchor"])) {
             val a = acta["sealerAnchor"] as? JsonObject ?: return "sealeranchor"
             val aseq = int(a["seq"])
             if (aseq == null || aseq < 1 || aseq >= seq) return "sealeranchor"
             if (!(str(a["hash"])?.matches(Regex("^[0-9a-f]{64}$")) ?: false)) return "sealeranchor"
         }
-        if (members.none { m -> ((m as JsonObject)["caps"] as JsonArray).any { str(it) == "sign" } }) return "sin-firmante"
+        if (members.none { m -> ((m as JsonObject)["caps"] as JsonArray).any { str(it) == "sign" } }) return "no-signer"
         return null
     }
 
@@ -160,17 +160,17 @@ object Acta {
         val v = int(acta["v"]) ?: 0
         val changed = (acta["sealerChanged"] as? JsonPrimitive)?.let { !it.isString && it.content == "true" } == true
         val l = acta["sealerLink"] as? JsonObject
-        if (isNull(acta["sealerLink"])) return if (changed && v >= 5) "eslabon-ausente" else null
-        if (l == null || int(l["v"]) != SEALER_LINK_V) return "eslabon-version"
-        if (str(l["sig"]) == null) return "eslabon-sin-firma"
-        if (str(l["profileId"]) != str(acta["profileId"])) return "eslabon-otro-perfil"
-        val seq = int(acta["seq"]) ?: return "eslabon-otro-seq"
+        if (isNull(acta["sealerLink"])) return if (changed && v >= 5) "link-missing" else null
+        if (l == null || int(l["v"]) != SEALER_LINK_V) return "link-version"
+        if (str(l["sig"]) == null) return "link-unsigned"
+        if (str(l["profileId"]) != str(acta["profileId"])) return "link-other-profile"
+        val seq = int(acta["seq"]) ?: return "link-other-seq"
         if (changed) {
-            if (int(l["seq"]) != seq) return "eslabon-otro-seq"
-            if (str(l["by"]) != str(acta["sealedBy"])) return "eslabon-otro-sellador"
-        } else if (!((int(l["seq"]) ?: Long.MAX_VALUE) < seq)) return "eslabon-del-futuro"
+            if (int(l["seq"]) != seq) return "link-other-seq"
+            if (str(l["by"]) != str(acta["sealedBy"])) return "link-other-sealer"
+        } else if (!((int(l["seq"]) ?: Long.MAX_VALUE) < seq)) return "link-from-future"
         val says = (l["sealers"] as? JsonArray).orEmpty().mapNotNull { str(it) }.sorted().joinToString("|")
-        if (says != sealersOf(acta).sorted().joinToString("|")) return "eslabon-no-cuadra"
+        if (says != sealersOf(acta).sorted().joinToString("|")) return "link-mismatch"
         return null
     }
 
@@ -178,9 +178,9 @@ object Acta {
     fun verify(acta: JsonObject?, expectedProfileId: String? = null): String? {
         checkShape(acta)?.let { return it }
         acta!!
-        val sig = str(acta["sig"]) ?: return "sin-firma"
-        if (expectedProfileId != null && str(acta["profileId"]) != expectedProfileId) return "otro-perfil"
-        if (!Crypto.verify(str(acta["sealedBy"])!!, body(acta), sig)) return "firma-invalida"
+        val sig = str(acta["sig"]) ?: return "unsigned"
+        if (expectedProfileId != null && str(acta["profileId"]) != expectedProfileId) return "other-profile"
+        if (!Crypto.verify(str(acta["sealedBy"])!!, body(acta), sig)) return "invalid-signature"
         return checkSealerLink(acta)
     }
 
@@ -191,21 +191,21 @@ object Acta {
      */
     fun canAdopt(candidate: JsonObject, current: JsonObject?): Pair<Boolean, String> {
         verify(candidate, current?.let { str(it["profileId"]) })?.let { return false to it }
-        if (current == null) return true to "sin-acta-previa"
+        if (current == null) return true to "no-previous-record"
         val cs = int(candidate["seq"])!!; val ks = int(current["seq"]) ?: 0
         val by = str(candidate["sealedBy"])
         if (cs > ks) {
-            if (!canSeal(current, by)) return false to "sellador-no-autorizado"
-            if (cs == ks + 1 && str(candidate["prev"]) != hash(current)) return false to "no-encadena"
-            return true to "seq-mayor"
+            if (!canSeal(current, by)) return false to "unauthorized-sealer"
+            if (cs == ks + 1 && str(candidate["prev"]) != hash(current)) return false to "not-chained"
+            return true to "higher-seq"
         }
         if (cs == ks) {
             val hc = hash(candidate); val hk = hash(current)
-            if (hc == hk) return false to "misma-acta"
-            if (by != str(current["sealedBy"]) && !canSeal(current, by)) return false to "otro-sellador"
-            return (hc < hk) to "desempate-hash"
+            if (hc == hk) return false to "same-record"
+            if (by != str(current["sealedBy"]) && !canSeal(current, by)) return false to "other-sealer"
+            return (hc < hk) to "hash-tiebreak"
         }
-        return false to "seq-menor"
+        return false to "lower-seq"
     }
 
     /**
