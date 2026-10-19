@@ -25,6 +25,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * (`src/client.js`): `connected` gives the token, `identify` binds my key, a directed
  * message goes `{ to_publickey, message }` and arrives as `{ type:'message', from, message }`.
  *
+ * EVERY MESSAGE LEAVES BINARY (0.42.0): a binary frame whose body is the package of the payload
+ * ([BinPack]), or a binary sealed envelope. Only the transport's control frames that the JS
+ * client reads as text — the greeting and the direct road's signalling — stay text. A proxy
+ * without binary frames (websocket-proxy < 1.6.0) gets nothing: `no-binary-support`, said.
+ *
  * It does not reconnect by itself: whoever owns it (one per account, while the approvals
  * screen is open) decides what a dropped connection means. A dead socket fails every
  * pending request with its reason instead of leaving it to time out.
@@ -238,19 +243,33 @@ class ProxyConnection(
         listeners.forEach { runCatching { it(inc) } }
     }
 
-    private fun send(frame: JsonObject) {
+    private fun socket(): WebSocket {
         closed?.let { throw ProxyError(it, "disconnected") }
-        val w = ws ?: throw ProxyError("not connected", "disconnected")
-        val text = frame.toString()
-        if (!w.send(text)) throw ProxyError("could not send: socket closing", "disconnected")
-        countOut(frame, text)
+        return ws ?: throw ProxyError("not connected", "disconnected")
     }
 
-    /** Counts a frame that left through the proxy, and whom it was for. */
-    private fun countOut(frame: JsonObject, text: String) {
+    private fun send(frame: JsonObject) {
+        val w = socket()
+        val text = frame.toString()
+        if (!w.send(text)) throw ProxyError("could not send: socket closing", "disconnected")
         traffic.frame(false, utf8Length(text))
-        val msg = (frame["message"] as? JsonPrimitive)?.content ?: return
-        val n = utf8Length(msg)
+        countPeers(frame, (frame["message"] as? JsonPrimitive)?.content?.let { utf8Length(it) } ?: return)
+    }
+
+    /** A message: [header] is the frame without `message`, [body] the package that goes raw. */
+    private fun sendBinary(header: JsonObject, body: ByteArray) {
+        val w = socket()
+        if (caps?.contains("binary") != true) {
+            throw ProxyError("this proxy does not take binary frames (it needs websocket-proxy >= 1.6.0)", "no-binary-support")
+        }
+        val frame = BinPack.encodeFrame(header, body)
+        if (!w.send(okio.ByteString.of(*frame))) throw ProxyError("could not send: socket closing", "disconnected")
+        traffic.frame(false, frame.size)
+        countPeers(header, body.size)
+    }
+
+    /** Whom a message that left through the proxy was for, and how big it was. */
+    private fun countPeers(frame: JsonObject, n: Int) {
         (frame["to"] as? kotlinx.serialization.json.JsonArray)?.forEach { t ->
             val tk = t.jsonPrimitive.content
             traffic.peer(false, "proxy", tk, tokenPubkeys[tk], n)
@@ -258,6 +277,16 @@ class ProxyConnection(
         (frame["to_publickey"] as? kotlinx.serialization.json.JsonArray)?.forEach { k ->
             traffic.peer(false, "proxy", null, k.jsonPrimitive.content, n)
         }
+    }
+
+    /** The greeting and the direct road's signalling: the JS client only reads them as text. */
+    private fun isControl(payload: JsonObject): Boolean =
+        (payload["t"] as? JsonPrimitive)?.content.let { it == HELLO_TAG || it == DirectTransport.RTC_TAG }
+
+    /** A payload to the proxy: control frames as text, everything else as its package. */
+    private fun sendPayload(header: JsonObject, payload: JsonObject) {
+        if (isControl(payload)) send(JsonObject(header + ("message" to JsonPrimitive(payload.toString()))))
+        else sendBinary(header, BinPack.pack(payload))
     }
 
     /** A request with an `id` whose answer comes back with the same `id`. */
@@ -359,15 +388,18 @@ class ProxyConnection(
      * queue. Then it tries to go direct for the next one, without waiting for anybody. The
      * `sendToOrQueue` of the JS client.
      */
-    fun sendToOrUpgrade(token: String, payload: JsonObject, peerPubkey: String? = null) {
+    fun sendToOrUpgrade(token: String, payload: JsonObject, peerPubkey: String? = null) =
+        sendToOrUpgrade(token, BinPack.pack(payload), peerPubkey)
+
+    /** The same with a package already made (a binary sealed envelope). */
+    fun sendToOrUpgrade(token: String, body: ByteArray, peerPubkey: String? = null) {
         val d = direct
-        val text = payload.toString()
-        if (d != null && d.send(token, text)) {
-            traffic.peer(false, d.route(token) ?: "webrtc", token, peerPubkey ?: pubkeyOfToken(token), utf8Length(text))
+        if (d != null && d.sendBinary(token, body)) {
+            traffic.peer(false, d.route(token) ?: "webrtc", token, peerPubkey ?: pubkeyOfToken(token), body.size)
             return
         }
-        if (peerPubkey != null) sendToOrElse(token, payload) { runCatching { sendByPubkey(peerPubkey, payload, toApp = app) } }
-        else sendTo(listOf(token), payload)
+        if (peerPubkey != null) sendToOrElse(token, body) { runCatching { sendByPubkey(peerPubkey, body, toApp = app) } }
+        else sendTo(listOf(token), body)
         d?.upgrade(token)
     }
 
@@ -408,12 +440,12 @@ class ProxyConnection(
     // ---------- by token and in channels ----------
 
     /** A message to connection tokens, `{ to, message }` like `_proxySendOne` of the JS client. */
-    fun sendTo(tokens: List<String>, payload: JsonObject) {
-        send(buildJsonObject {
-            put("to", buildJsonArray { tokens.forEach { add(JsonPrimitive(it)) } })
-            put("message", payload.toString())
-        })
-    }
+    fun sendTo(tokens: List<String>, payload: JsonObject) = sendPayload(toTokens(tokens), payload)
+
+    /** The same with a package already made (a binary sealed envelope). */
+    fun sendTo(tokens: List<String>, body: ByteArray) = sendBinary(toTokens(tokens), body)
+
+    private fun toTokens(tokens: List<String>) = buildJsonObject { put("to", buildJsonArray { tokens.forEach { add(JsonPrimitive(it)) } }) }
 
     // What went to a token and waits to know if that token still exists (see [sendToOrElse]).
     private val tokenWatch = java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, () -> Unit>>()
@@ -425,17 +457,19 @@ class ProxyConnection(
      * runs — the caller sends the same thing by pubkey, to the queue — and `PeerGone` is emitted
      * so nobody keeps writing there. The same as `sendSealedTo` in `@dotrino/proxy-client` 0.26.
      */
-    fun sendToOrElse(token: String, payload: JsonObject, onGone: () -> Unit) {
+    fun sendToOrElse(token: String, payload: JsonObject, onGone: () -> Unit) = sendToOrElse(token, BinPack.pack(payload), onGone)
+
+    /** The same with a package already made (a binary sealed envelope). */
+    fun sendToOrElse(token: String, body: ByteArray, onGone: () -> Unit) {
         val now = System.currentTimeMillis()
         tokenWatch.entries.removeIf { now - it.value.second > 15_000 }
         val id = "msg_${nextId.getAndIncrement()}"
         tokenWatch[id] = Triple(token, now, onGone)
         try {
-            send(buildJsonObject {
+            sendBinary(buildJsonObject {
                 put("to", buildJsonArray { add(JsonPrimitive(token)) })
-                put("message", payload.toString())
                 put("id", id)
-            })
+            }, body)
         } catch (e: Exception) { tokenWatch.remove(id); throw e }
     }
 
@@ -558,20 +592,23 @@ class ProxyConnection(
     }
 
     /**
-     * A directed message to a key. The payload travels as a JSON string, like the JS client
-     * sends it. [quiet]: it is queued the same, but the proxy does not ring their phone —
-     * for what can wait until they open the app (presence, an ack).
+     * A directed message to a key, as its package in a binary frame. [quiet]: it is queued the
+     * same, but the proxy does not ring their phone — for what can wait until they open the app
+     * (presence, an ack).
      */
-    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) {
-        send(buildJsonObject {
+    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) =
+        sendByPubkey(to, BinPack.pack(payload), quiet, toApp, ephemeral)
+
+    /** The same with a package already made (a binary sealed envelope). */
+    fun sendByPubkey(to: String, body: ByteArray, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) {
+        sendBinary(buildJsonObject {
             put("to_publickey", buildJsonArray { add(JsonPrimitive(to)) })
-            put("message", payload.toString())
             if (quiet) put("quiet", true)
             // REAL TIME only: if they are not connected it is neither queued nor rung (a presence probe).
             if (ephemeral) put("ephemeral", true)
             // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
             if (toApp != null) put("app", toApp)
-        })
+        }, body)
     }
 
     // ---------- TURN ----------

@@ -1,6 +1,7 @@
 import Foundation
 
-/// A connection to the proxy that STAYS UP and where EVERYTHING GOES SEALED: the native
+/// A connection to the proxy that STAYS UP and where EVERYTHING GOES SEALED — and binary: a
+/// binary sealed envelope (`IdentitySealing.sealBinary`) in a binary frame. The native
 /// counterpart of `WebSocketProxyClient` with `requireSealed: true`. Same piece as
 /// `SealedSession.kt`: reconnects, re-identifies and re-announces its key every time; moves to
 /// the next proxy after `failsBeforeFailover` failures; drops what arrives unsealed; delivers
@@ -260,16 +261,15 @@ public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
             }
             keys = [try await c.encPubOf(pk)]
         }
-        let sealed = try sealing.seal(payload, to: keys)
+        let sealed = try sealing.sealBinary(payload, to: keys)
         let d = lock.withLock { direct }
-        let text = sealed.text
-        if let d, d.send(token, text) {
-            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: pk, bytes: utf8Length(text))
+        if let d, d.sendBinary(token, sealed) {
+            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: pk, bytes: sealed.count)
             return
         }
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
-        if let pk { try c.sendToOrElse(token, sealed) { try? c.sendByPubkey(pk, sealed, toApp: self.app) } }
-        else { try c.sendTo([token], sealed) }
+        if let pk { try c.sendToOrElse(token, body: sealed) { try? c.sendByPubkey(pk, body: sealed, toApp: self.app) } }
+        else { try c.sendTo([token], body: sealed) }
         // And try to go direct for the next one, without waiting for anybody.
         d?.upgrade(token)
     }
@@ -288,7 +288,7 @@ public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
     public func sendSealed(toPubkey pubkey: String, _ payload: JSON, recipientEncPubs: [String] = [], quiet: Bool = false) async throws {
         let c = try live()
         let keys = recipientEncPubs.isEmpty ? [try await c.encPubOf(pubkey)] : recipientEncPubs
-        try c.sendByPubkey(pubkey, try sealing.seal(payload, to: keys), quiet: quiet, toApp: app)   // to the SAME app on their side
+        try c.sendByPubkey(pubkey, body: try sealing.sealBinary(payload, to: keys), quiet: quiet, toApp: app)   // to the SAME app on their side
     }
 
     public func requestPairingCode(ttlMs: Int64? = nil) async throws -> ProxyConnection.PairingCode {

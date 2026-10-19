@@ -17,8 +17,9 @@ import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * The phone READS BINARY from the real pillar, through a real proxy: a file sealed in binary by
- * token, another by pubkey (the queue road), and the phone's text answer reaches the JS.
+ * The phone READS AND SENDS BINARY with the real pillar, through a real proxy: a file sealed in
+ * binary by token, another by pubkey (the queue road); and the phone's answers — sealed by token,
+ * sealed by pubkey, and an unsealed package like the vault's — reach the JS as binary frames.
  *
  *   node test-vectors/e2e-binary.mjs /tmp/bin.json
  *   DOTRINO_E2E_BIN=/tmp/bin.json ./gradlew :dotrino-native:testDebugUnitTest --tests '*BinaryE2eTest*'
@@ -55,13 +56,32 @@ class BinaryE2eTest {
             assertEquals(sent.getValue("blob").jsonPrimitive.content, q.payload.getValue("blob").jsonPrimitive.content)
             assert(Delegation.samePubkey(q.fromPubkey, f.getValue("jsPubkey").jsonPrimitive.content))
 
-            // And the phone answers (still in text, sealed): the JS opens it.
+            // And the phone answers, in binary: sealed by token, sealed by pubkey, and an unsealed
+            // package by pubkey to the `vault` app (what VaultClient sends).
+            val jsPub = f.getValue("jsPubkey").jsonPrimitive.content
             s.sendSealedTo(jsToken, buildJsonObject { put("type", "ACK"); put("n", 2) })
-            val reply = File("$path.reply")
-            withTimeout(15_000) { while (!reply.exists()) delay(100) }
-            val r = Json.parseToJsonElement(reply.readText()).jsonObject
-            assertEquals("ACK", r.getValue("msg").jsonObject.getValue("type").jsonPrimitive.content)
-            assertEquals("true", r.getValue("sealed").jsonPrimitive.content)
+            s.sendSealed(jsPub, buildJsonObject { put("type", "ACK_Q") })
+            val bare = ProxyConnection(f.getValue("proxyUrl").jsonPrimitive.content, "vault")
+            try {
+                bare.connect()
+                bare.identifyAs(profile.publickey) { profile.signData(it) }
+                bare.sendByPubkey(jsPub, buildJsonObject { put("type", "PLAIN"); put("ok", true) }, toApp = "vault")
+                val reply = File("$path.reply")
+                var r = buildJsonObject {}
+                withTimeout(15_000) {
+                    while (true) {
+                        if (reply.exists()) r = Json.parseToJsonElement(reply.readText()).jsonObject
+                        if (r.keys.containsAll(listOf("ACK", "ACK_Q", "PLAIN"))) break
+                        delay(100)
+                    }
+                }
+                for ((type, sealed) in listOf("ACK" to "true", "ACK_Q" to "true", "PLAIN" to "false")) {
+                    val one = r.getValue(type).jsonObject
+                    assertEquals("$type sealed", sealed, one.getValue("sealed").jsonPrimitive.content)
+                    assertEquals("$type arrived as a binary frame", "true", one.getValue("binary").jsonPrimitive.content)
+                }
+                assertEquals("true", r.getValue("PLAIN").jsonObject.getValue("msg").jsonObject.getValue("ok").jsonPrimitive.content)
+            } finally { bare.close() }
         } finally {
             s.close()
             File(path).delete()

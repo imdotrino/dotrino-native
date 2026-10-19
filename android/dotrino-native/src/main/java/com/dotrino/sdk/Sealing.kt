@@ -44,6 +44,18 @@ class IdentitySealing(private val profile: Profile, val app: String) {
         return buildJsonObject { put("app", app); put("sealed", sealed); put("from", profile.encPub) }
     }
 
+    /**
+     * Seals [msg] as a BINARY sealed envelope (`sealing.js` of proxy-client ≥ 0.35, the way
+     * everything leaves this library): a fresh AES-256 message key sealed with [seal] as `k`,
+     * and the package of [msg] AES-GCM encrypted with it as `iv`/`ct`.
+     */
+    suspend fun sealBinary(msg: JsonObject, recipientEncPubs: List<String>): ByteArray {
+        val cek = Crypto.randomBytes(32)
+        val k = seal(buildJsonObject { put("cek", Crypto.b64(cek)) }, recipientEncPubs)
+        val (iv, ct) = Crypto.aesGcmSeal(cek, BinPack.pack(msg))
+        return BinPack.packSealed(k, iv, ct)
+    }
+
     /** Opens what was sealed to me. Throws if it is not mine, not ours, or was tampered with. */
     suspend fun open(env: JsonObject): Opened {
         if (!isSealed(env)) throw SealingError("not a sealed envelope of $app", "not-sealed")

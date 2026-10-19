@@ -40,6 +40,11 @@ final class OneShot<T>: @unchecked Sendable {
 /// (`src/client.js`): `connected` gives the token, `identify` binds my key, a directed
 /// message goes `{ to_publickey, message }` and arrives as `{ type:'message', from, message }`.
 ///
+/// EVERY MESSAGE LEAVES BINARY (0.42.0): a binary frame whose body is the package of the payload
+/// (`BinPack`), or a binary sealed envelope. Only the transport's control frames that the JS client
+/// reads as text — the greeting and the direct road's signalling — stay text. A proxy without
+/// binary frames (websocket-proxy < 1.6.0) gets nothing: `no-binary-support`, said.
+///
 /// It does not reconnect by itself: whoever owns it (one per account, while the requests
 /// screen is open) decides what a dropped connection means. A dead socket fails every
 /// pending request with its reason instead of leaving it to time out.
@@ -312,19 +317,48 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         return pending.removeValue(forKey: id)
     }
 
-    private func send(_ frame: JSON) throws {
+    private func socket() throws -> URLSessionWebSocketTask {
         if let c = closed { throw ProxyError(c, code: "disconnected") }
         guard let t = ws else { throw ProxyError("not connected", code: "disconnected") }
-        let text = frame.text
-        t.send(.string(text)) { [weak self] e in if let e { self?.die("send: \(e.localizedDescription)") } }
-        countOut(frame, text)
+        return t
     }
 
-    /// Counts a frame that left through the proxy, and whom it was for.
-    private func countOut(_ frame: JSON, _ text: String) {
+    private func send(_ frame: JSON) throws {
+        let t = try socket()
+        let text = frame.text
+        t.send(.string(text)) { [weak self] e in if let e { self?.die("send: \(e.localizedDescription)") } }
         traffic.frame(incoming: false, bytes: utf8Length(text))
-        guard let msg = frame["message"]?.string else { return }
-        let n = utf8Length(msg)
+        if let msg = frame["message"]?.string { countPeers(frame, utf8Length(msg)) }
+    }
+
+    /// A message: `header` is the frame without `message`, `body` the package that goes raw.
+    private func sendBinary(_ header: JSON, _ body: Data) throws {
+        let t = try socket()
+        guard caps?.contains("binary") == true else {
+            throw ProxyError("this proxy does not take binary frames (it needs websocket-proxy >= 1.6.0)", code: "no-binary-support")
+        }
+        let frame = BinPack.encodeFrame(header, body)
+        t.send(.data(frame)) { [weak self] e in if let e { self?.die("send: \(e.localizedDescription)") } }
+        traffic.frame(incoming: false, bytes: frame.count)
+        countPeers(header, body.count)
+    }
+
+    /// The greeting and the direct road's signalling: the JS client only reads them as text.
+    private func isControl(_ payload: JSON) -> Bool {
+        let t = payload["t"]?.string
+        return t == Self.helloTag || t == rtcTag
+    }
+
+    /// A payload to the proxy: control frames as text, everything else as its package.
+    private func sendPayload(_ header: [String: JSON], _ payload: JSON) throws {
+        if isControl(payload) {
+            var f = header; f["message"] = .string(payload.text)
+            try send(.object(f))
+        } else { try sendBinary(.object(header), BinPack.pack(payload)) }
+    }
+
+    /// Whom a message that left through the proxy was for, and how big it was.
+    private func countPeers(_ frame: JSON, _ n: Int) {
         for t in frame["to"]?.array?.compactMap(\.string) ?? [] {
             traffic.peer(incoming: false, path: "proxy", token: t, pubkey: lock.withLock { tokenPubkeys[t] }, bytes: n)
         }
@@ -433,14 +467,18 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// queue. Then it tries to go direct for the next one, without waiting for anybody. The
     /// `sendToOrQueue` of the JS client.
     public func sendToOrUpgrade(_ token: String, _ payload: JSON, peerPubkey: String? = nil) throws {
+        try sendToOrUpgrade(token, body: BinPack.pack(payload), peerPubkey: peerPubkey)
+    }
+
+    /// The same with a package already made (a binary sealed envelope).
+    public func sendToOrUpgrade(_ token: String, body: Data, peerPubkey: String? = nil) throws {
         let d = lock.withLock { direct }
-        let text = payload.text
-        if let d, d.send(token, text) {
-            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: peerPubkey ?? pubkeyOfToken(token), bytes: utf8Length(text))
+        if let d, d.sendBinary(token, body) {
+            traffic.peer(incoming: false, path: d.route(token) ?? "webrtc", token: token, pubkey: peerPubkey ?? pubkeyOfToken(token), bytes: body.count)
             return
         }
-        if let pk = peerPubkey { try sendToOrElse(token, payload) { [weak self] in guard let self else { return }; try? self.sendByPubkey(pk, payload, toApp: self.app) } }
-        else { try sendTo([token], payload) }
+        if let pk = peerPubkey { try sendToOrElse(token, body: body) { [weak self] in guard let self else { return }; try? self.sendByPubkey(pk, body: body, toApp: self.app) } }
+        else { try sendTo([token], body: body) }
         d?.upgrade(token)
     }
 
@@ -470,7 +508,12 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
 
     /// A message to connection tokens, `{ to, message }` like `_proxySendOne` of the JS client.
     public func sendTo(_ tokens: [String], _ payload: JSON) throws {
-        try send(["to": .array(tokens.map { .string($0) }), "message": .string(payload.text)])
+        try sendPayload(["to": .array(tokens.map { .string($0) })], payload)
+    }
+
+    /// The same with a package already made (a binary sealed envelope).
+    public func sendTo(_ tokens: [String], body: Data) throws {
+        try sendBinary(["to": .array(tokens.map { .string($0) })], body)
     }
 
     /// `sendTo` for ONE token, but a dead token does not swallow the message. A token is a
@@ -479,6 +522,11 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// runs — the caller sends the same thing by pubkey, to the queue — and `.peerGone` is
     /// emitted. The same as `sendToOrElse` in Kotlin and `sendSealedTo` in proxy-client 0.26.
     public func sendToOrElse(_ token: String, _ payload: JSON, onGone: @escaping () -> Void) throws {
+        try sendToOrElse(token, body: BinPack.pack(payload), onGone: onGone)
+    }
+
+    /// The same with a package already made (a binary sealed envelope).
+    public func sendToOrElse(_ token: String, body: Data, onGone: @escaping () -> Void) throws {
         let id: String = lock.withLock {
             let now = Date()
             tokenWatch = tokenWatch.filter { now.timeIntervalSince($0.value.at) < 15 }
@@ -487,7 +535,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
             return id
         }
         do {
-            try send(["to": .array([.string(token)]), "message": .string(payload.text), "id": .string(id)])
+            try sendBinary(["to": .array([.string(token)]), "id": .string(id)], body)
         } catch {
             _ = lock.withLock { tokenWatch.removeValue(forKey: id) }
             throw error
@@ -539,16 +587,21 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         return enc
     }
 
-    /// A directed message to a key. The payload travels as a JSON string, like the JS client
-    /// sends it. [quiet]: queued the same, but the proxy does not ring their phone.
+    /// A directed message to a key, as its package in a binary frame. [quiet]: queued the same,
+    /// but the proxy does not ring their phone.
     /// [ephemeral]: REAL TIME only — if they are not connected it is neither queued nor rung (a presence probe).
     public func sendByPubkey(_ to: String, _ payload: JSON, quiet: Bool = false, toApp: String? = nil, ephemeral: Bool = false) throws {
-        var f: [String: JSON] = ["to_publickey": [.string(to)], "message": .string(payload.text)]
+        try sendByPubkey(to, body: BinPack.pack(payload), quiet: quiet, toApp: toApp, ephemeral: ephemeral)
+    }
+
+    /// The same with a package already made (a binary sealed envelope).
+    public func sendByPubkey(_ to: String, body: Data, quiet: Bool = false, toApp: String? = nil, ephemeral: Bool = false) throws {
+        var f: [String: JSON] = ["to_publickey": [.string(to)]]
         if quiet { f["quiet"] = true }
         if ephemeral { f["ephemeral"] = true }
         // WHICH app of theirs it is for: the proxy rings and hands it only to that app.
         if let toApp { f["app"] = .string(toApp) }
-        try send(.object(f))
+        try sendBinary(.object(f), body)
     }
 
     // MARK: TURN

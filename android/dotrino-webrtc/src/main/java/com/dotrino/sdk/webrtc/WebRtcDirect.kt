@@ -98,10 +98,10 @@ class WebRtcDirect(context: Context) : DirectTransport {
         runCatching { pc.getStats { report -> routeOf(report.statsMap)?.let { p.route = it } } }
     }
 
-    override fun send(token: String, text: String): Boolean {
+    override fun sendBinary(token: String, bytes: ByteArray): Boolean {
         val dc = peers[token]?.dc ?: return false
         if (dc.state() != DataChannel.State.OPEN) return false
-        return runCatching { dc.send(DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8)), false)) }.getOrDefault(false)
+        return runCatching { dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), true)) }.getOrDefault(false)
     }
 
     override fun upgrade(token: String) = exec.execute {

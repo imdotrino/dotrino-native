@@ -40,6 +40,18 @@ final class BinPackTests: XCTestCase {
         XCTAssertFalse(BinPack.isBinSealed(try XCTUnwrap(inc.packed)))
     }
 
+    func testWhatThePhoneSealsInBinaryOpensAndOnlyForItsRecipient() throws {
+        let me = Profile.of(SoftKeys.fresh())
+        let mine = IdentitySealing(profile: me, app: "messenger")
+        let msg: JSON = ["type": "DM", "text": "hola ñ ✓"]
+        let packed = try BinPack.unpack(try mine.sealBinary(msg, to: [me.encPub]))
+        XCTAssertTrue(BinPack.isBinSealed(packed))
+        let opened = try mine.openBinary(packed)
+        XCTAssertEqual(opened.payload, msg)
+        XCTAssertEqual(opened.senderEncPub, me.encPub)
+        XCTAssertThrowsError(try IdentitySealing(profile: Profile.of(SoftKeys.fresh()), app: "messenger").openBinary(packed))
+    }
+
     func testPackAndFrameRoundTrip() throws {
         let o: JSON = ["t": "x", "ñ": "✓"]
         let frame = BinPack.encodeFrame(["to": "A"], BinPack.pack(o))

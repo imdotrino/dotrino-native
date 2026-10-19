@@ -1,7 +1,7 @@
 // Arnés de punta a punta del BINARIO: un proxio de verdad (repo hermano) y un cliente del pilar
 // (`@dotrino/proxy-client` + `@dotrino/identity`, los de la PWA) que le manda al «teléfono»
-// archivos sellados en binario, por token y por pubkey. El teléfono contesta en texto y eso
-// también se comprueba.
+// archivos sellados en binario, por token y por pubkey. Y el teléfono contesta, también en
+// binario: sellado por token, sellado por pubkey y un paquete sin sellar (el de la bóveda).
 //
 //   node test-vectors/e2e-binary.mjs <salida.json>
 //   DOTRINO_E2E_BIN=<salida.json> ./gradlew :dotrino-native:testDebugUnitTest --tests '*BinaryE2eTest*'
@@ -10,7 +10,8 @@
 //   <salida>        lo escribe esto: proxyUrl, las privadas del perfil del teléfono, y el token y
 //                   la pubkey del cliente JS
 //   <salida>.sent   lo escribe esto cuando mandó los dos archivos (con su base64, para comparar)
-//   <salida>.reply  lo escribe esto con lo que el teléfono le contestó
+//   <salida>.reply  lo escribe esto con lo que el teléfono le contestó: cada mensaje por su
+//                   `type`, con `sealed` y `binary` (si llegó como trama binaria)
 // Se cierra solo a los 2 minutos, o cuando la prueba borra <salida>.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -49,6 +50,12 @@ await client.identifyAs({ publickey, sign })
 await client.announceEncPub({ publickey, encPub: await identity.getEncryptionPubkey(), sign })
 
 const gen = async (algo, uses) => crypto.subtle.exportKey('jwk', (await crypto.subtle.generateKey(algo, true, uses)).privateKey)
+// Otro cliente de la misma identidad, como la bóveda: sin `requireSealed` y app `vault`. Recibe
+// lo que el teléfono manda sin sellar (VaultClient cifra lo suyo por dentro).
+const plain = new WebSocketProxyClient({ url: proxyUrl, enableWebRTC: false, app: 'vault' })
+await plain.connect()
+await plain.identifyAs({ publickey, sign })
+
 fs.writeFileSync(out, JSON.stringify({
   proxyUrl, jsToken: client.token, jsPubkey: publickey,
   sign: await gen({ name: 'ECDSA', namedCurve: 'P-256' }, ['sign', 'verify']),
@@ -61,9 +68,13 @@ const file = new Uint8Array(200 * 1024)
 for (let i = 0; i < file.length; i++) file[i] = (i * 7) & 0xff
 const b64 = (u8) => Buffer.from(u8).toString('base64')
 
-client.on('message', (from, msg, meta) => {
-  fs.writeFileSync(out + '.reply', JSON.stringify({ msg, sealed: meta.sealed }))
-})
+const replies = {}
+const onReply = (from, msg, meta) => {
+  replies[msg?.type] = { msg, sealed: !!meta.sealed, binary: meta.raw instanceof Uint8Array }
+  fs.writeFileSync(out + '.reply', JSON.stringify(replies))
+}
+client.on('message', onReply)
+plain.on('message', onReply)
 client.on('error', (e) => console.error('e2e-binary: client error', e.type, e.code || e.reason || ''))
 
 // Cuando el teléfono salude: tiene que decir que entiende binario, y entonces se le manda.
@@ -80,4 +91,5 @@ client.on('peer_identity', async (token, phonePub) => {
 
 while (fs.existsSync(out)) await new Promise((r) => setTimeout(r, 300))
 client.close()
+plain.close()
 process.exit(0)

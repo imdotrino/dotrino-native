@@ -69,9 +69,9 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
         }
     }
 
-    public func send(_ token: String, _ text: String) -> Bool {
+    public func sendBinary(_ token: String, _ bytes: Data) -> Bool {
         guard let dc = peerIfAny(token)?.dc, dc.readyState == .open else { return false }
-        return dc.sendData(RTCDataBuffer(data: Data(text.utf8), isBinary: false))
+        return dc.sendData(RTCDataBuffer(data: bytes, isBinary: true))
     }
 
     public func upgrade(_ token: String) {

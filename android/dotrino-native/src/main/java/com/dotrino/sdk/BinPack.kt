@@ -90,11 +90,26 @@ object BinPack {
         }
     }
 
-    /** An object without bytes → a package (what goes on the wire for it). */
-    fun pack(obj: JsonElement): ByteArray {
+    /**
+     * An object → a package (what goes on the wire for it). [blobs] are the bytes its [ref]s
+     * point to, in order: `pack(obj, listOf(a, b))` with `ref(0, a.size)` and `ref(a.size, b.size)`.
+     */
+    fun pack(obj: JsonElement, blobs: List<ByteArray> = emptyList()): ByteArray {
         val head = obj.toString().toByteArray(Charsets.UTF_8)
-        return ByteBuffer.allocate(5 + head.size).put(PACK_MAGIC).putInt(head.size).put(head).array()
+        val buf = ByteBuffer.allocate(5 + head.size + blobs.sumOf { it.size }).put(PACK_MAGIC).putInt(head.size).put(head)
+        blobs.forEach { buf.put(it) }
+        return buf.array()
     }
+
+    /** The `{"__dotrino_bin":[from,length]}` reference to bytes in a package's area. */
+    fun ref(from: Int, length: Int): JsonObject =
+        JsonObject(mapOf(BIN_TAG to JsonArray(listOf(JsonPrimitive(from), JsonPrimitive(length)))))
+
+    /** The binary sealed envelope `{ bv: 1, k, iv, ct }` as a package: `k` the sealed message key. */
+    fun packSealed(k: JsonObject, iv: ByteArray, ct: ByteArray): ByteArray = pack(
+        JsonObject(mapOf("bv" to JsonPrimitive(BIN_SEALED), "k" to k, "iv" to ref(0, iv.size), "ct" to ref(iv.size, ct.size))),
+        listOf(iv, ct),
+    )
 
     /** The proxy's binary frame → its header and its body. Throws `bad-frame` if it is not one. */
     fun decodeFrame(b: ByteArray): Pair<JsonObject, ByteArray> {

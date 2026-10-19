@@ -34,6 +34,16 @@ public final class IdentitySealing: @unchecked Sendable {
         return ["app": .string(app), "sealed": sealed, "from": .string(profile.encPub)]
     }
 
+    /// Seals `msg` as a BINARY sealed envelope (`sealing.js` of proxy-client ≥ 0.35, the way
+    /// everything leaves this library): a fresh AES-256 message key sealed with `seal` as `k`, and
+    /// the package of `msg` AES-GCM encrypted with it as `iv`/`ct`.
+    public func sealBinary(_ msg: JSON, to recipientEncPubs: [String]) throws -> Data {
+        let cek = Crypto.randomBytes(32)
+        let k = try seal(["cek": .string(Crypto.b64(cek))], to: recipientEncPubs)
+        let (iv, ct) = try Crypto.aesGcmSeal(key: cek, plain: BinPack.pack(msg))
+        return BinPack.packSealed(k: k, iv: iv, ct: ct)
+    }
+
     /// Opens what was sealed to me. Throws if it is not mine, not ours, or was tampered with.
     public func open(_ env: JSON) throws -> Opened {
         guard isSealed(env), let sealed = env["sealed"] else { throw SealingError(description: "not a sealed envelope of \(app)", code: "not-sealed") }

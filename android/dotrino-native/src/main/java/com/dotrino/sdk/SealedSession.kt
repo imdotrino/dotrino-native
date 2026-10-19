@@ -14,7 +14,8 @@ import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * A connection to the proxy that STAYS UP and where EVERYTHING GOES SEALED: the native
+ * A connection to the proxy that STAYS UP and where EVERYTHING GOES SEALED — and binary: a
+ * binary sealed envelope ([IdentitySealing.sealBinary]) in a binary frame. The native
  * counterpart of `WebSocketProxyClient` with `requireSealed: true` and `identitySealing`.
  *
  *  - reconnects by itself, re-identifies as the profile and re-announces its encryption
@@ -244,11 +245,10 @@ class SealedSession(
         val keys = recipientEncPubs.ifEmpty {
             listOf(c.encPubOf(pk ?: throw SessionError("nobody has said whose this token is — greet it first", "no-peer-identity")))
         }
-        val sealed = sealing.seal(payload, keys)
+        val sealed = sealing.sealBinary(payload, keys)
         val d = direct
-        val text = sealed.toString()
-        if (d != null && d.send(token, text)) {
-            traffic.peer(false, d.route(token) ?: "webrtc", token, pk, utf8Length(text))
+        if (d != null && d.sendBinary(token, sealed)) {
+            traffic.peer(false, d.route(token) ?: "webrtc", token, pk, sealed.size)
             return
         }
         // Knowing whose it is, a dead token (they restarted) sends the SAME envelope to the queue.
@@ -286,7 +286,7 @@ class SealedSession(
         val c = live()
         val keys = recipientEncPubs.ifEmpty { listOf(c.encPubOf(pubkey)) }
         // To the SAME app on their side (messenger → messenger): their other apps share the key.
-        c.sendByPubkey(pubkey, sealing.seal(payload, keys), quiet, toApp = app)
+        c.sendByPubkey(pubkey, sealing.sealBinary(payload, keys), quiet, toApp = app)
     }
 
     suspend fun requestPairingCode(ttlMs: Long? = null) = live().requestPairingCode(ttlMs)

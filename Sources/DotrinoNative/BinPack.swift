@@ -90,10 +90,19 @@ public enum BinPack {
 
     private static func be32(_ n: Int) -> Data { Data([UInt8(n >> 24 & 0xFF), UInt8(n >> 16 & 0xFF), UInt8(n >> 8 & 0xFF), UInt8(n & 0xFF)]) }
 
-    /// An object without bytes → a package (what goes on the wire for it).
-    public static func pack(_ obj: JSON) -> Data {
+    /// An object → a package (what goes on the wire for it). `blobs` are the bytes its `ref`s
+    /// point to, in order: `pack(obj, [a, b])` with `ref(0, a.count)` and `ref(a.count, b.count)`.
+    public static func pack(_ obj: JSON, _ blobs: [Data] = []) -> Data {
         let head = Data(obj.text.utf8)
-        return Data([packMagic]) + be32(head.count) + head
+        return blobs.reduce(Data([packMagic]) + be32(head.count) + head, +)
+    }
+
+    /// The `{"__dotrino_bin":[from,length]}` reference to bytes in a package's area.
+    public static func ref(_ from: Int, _ length: Int) -> JSON { [binTag: .array([.int(Int64(from)), .int(Int64(length))])] }
+
+    /// The binary sealed envelope `{ bv: 1, k, iv, ct }` as a package: `k` the sealed message key.
+    public static func packSealed(k: JSON, iv: Data, ct: Data) -> Data {
+        pack(["bv": .int(binSealed), "k": k, "iv": ref(0, iv.count), "ct": ref(iv.count, ct.count)], [iv, ct])
     }
 
     /// The proxy's binary frame → its header and its body. Throws `bad-frame` if it is not one.

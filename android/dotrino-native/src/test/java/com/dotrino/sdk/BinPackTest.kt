@@ -52,6 +52,20 @@ class BinPackTest {
         Unit
     }
 
+    @Test fun whatThePhoneSealsInBinaryOpensAndOnlyForItsRecipient() = runBlocking {
+        val me = Profile.of(TestKeys.fresh())
+        val mine = IdentitySealing(me, "messenger")
+        val msg = buildJsonObject { put("type", "DM"); put("text", "hola ñ ✓") }
+        val packed = BinPack.unpack(mine.sealBinary(msg, listOf(me.encPub)))
+        assertTrue(BinPack.isBinSealed(packed))
+        val opened = mine.openBinary(packed)
+        assertEquals(msg, opened.payload)
+        assertEquals(me.encPub, opened.senderEncPub)
+        val stranger = IdentitySealing(Profile.of(TestKeys.fresh()), "messenger")
+        assertThrows(Exception::class.java) { runBlocking { stranger.openBinary(packed) } }
+        Unit
+    }
+
     @Test fun packAndFrameRoundTrip() {
         val o = buildJsonObject { put("t", "x"); put("ñ", "✓") }
         val frame = BinPack.encodeFrame(buildJsonObject { put("to", "A") }, BinPack.pack(o))
