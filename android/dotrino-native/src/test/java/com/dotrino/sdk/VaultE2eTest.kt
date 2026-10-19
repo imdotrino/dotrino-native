@@ -91,7 +91,7 @@ class VaultE2eTest {
         val vc = VaultClient(account, k, conn) { }
         val e = try { vc.approvals(); null } catch (x: VaultError) { x }
         assertTrue("it must fail: this phone cannot approve", e != null)
-        assertEquals("acta", e!!.code)
+        assertEquals("record", e!!.code)
         conn.close()
     }
 }

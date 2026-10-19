@@ -91,7 +91,7 @@ final class VaultE2eTests: XCTestCase {
             _ = try await vc.approvals()
             XCTFail("it must fail: this phone cannot approve")
         } catch let e as VaultError {
-            XCTAssertEqual(e.code, "acta")
+            XCTAssertEqual(e.code, "record")
         }
         conn.close()
     }
