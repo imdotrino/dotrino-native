@@ -38,7 +38,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `PhoneIdentity` (Android) / `Profile.fromPhone()` (iOS) | el perfil del teléfono: por la app de identidad en Android, por el almacén compartido del equipo en iOS; y la llave del TRANSPORTE de la app (firma sus canales) | — |
 | `ProxyConnection` (+) | el saludo (`helloTo`), canales (`publish`), anunciar y averiguar llaves de cifrado verificadas (`announceEncPub`, `encPubOf`), mandar por token | `proxy-client` |
 | `BroadcastHost` | la EMISIÓN de lobby, lado del emisor: sellada a cada espectador y firmada por el perfil; quien mira lo hace en la web | `@dotrino/lobby` `broadcast.js` |
-| `BinPack` + `IdentitySealing.openBinary` | LEER BINARIO (0.37.0): la trama binaria del proxio, el paquete con bytes y el sobre sellado en binario (`{ bv: 1, k, iv, ct }`). El saludo dice `speaks: ['binary']`, y desde ahí el pilar JS (≥ 0.36) le manda bytes al teléfono. Los bytes llegan a la app como base64 dentro del JSON. Lo que el teléfono manda sigue en texto: mandar en binario es el segundo paso, cuando todo lo que habla con el teléfono ya lo lee | `proxy-client` `binpack.js`, `sealing.js` |
+| `BinPack` + `IdentitySealing.openBinary` | LEER BINARIO (0.37.0): la trama binaria del proxio, el paquete con bytes y el sobre sellado en binario (`{ bv: 1, k, iv, ct }`). El saludo dice `speaks: ['binary']`, y desde ahí el pilar JS (≥ 0.36) le manda bytes al teléfono. Los bytes llegan a la app como base64 dentro del JSON. Y MANDA BINARIO (0.42.0): todo mensaje sale como trama binaria con su paquete, y lo sellado como sobre binario (`sealBinary`), también por el canal directo. Solo el saludo y la señalización de WebRTC van en texto, porque el pilar JS solo los lee así. Un proxio sin tramas binarias (websocket-proxy < 1.6.0) no recibe nada: `no-binary-support`. El otro lado necesita proxy-client ≥ 0.35 | `proxy-client` `binpack.js`, `sealing.js` |
 
 Probado de punta a punta contra un proxio real y un espectador que corre `@dotrino/lobby` tal
 cual (`test-vectors/e2e-broadcast.mjs` + `BroadcastE2eTest`, también desde iOS por la LAN), y
@@ -125,7 +125,8 @@ xcodebuild -scheme DotrinoNative -destination 'platform=iOS Simulator,name=iPhon
 node test-vectors/e2e-vault.mjs /tmp/e2e.json &
 DOTRINO_E2E=/tmp/e2e.json ./gradlew :dotrino-native:testDebugUnitTest
 
-# un cliente del pilar le manda archivos en binario al teléfono (por token y por pubkey):
+# un cliente del pilar le manda archivos en binario al teléfono (por token y por pubkey), y el
+# teléfono contesta en binario (sellado por token, sellado por pubkey y un paquete sin sellar):
 node test-vectors/e2e-binary.mjs /tmp/bin.json &
 DOTRINO_E2E_BIN=/tmp/bin.json ./gradlew :dotrino-native:testDebugUnitTest --tests '*BinaryE2eTest*'
 ```
