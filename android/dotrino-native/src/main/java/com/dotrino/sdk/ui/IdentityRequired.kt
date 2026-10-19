@@ -13,8 +13,8 @@ import com.dotrino.sdk.R
  * explains why in this modal, and only then sends to Google Play — never straight to the store.
  * iOS has no identity app, so there is nothing like this there.
  *
- * It also asks to UPDATE it when the installed one is older than the one this library came out
- * with ([IdentityClient.MIN_VERSION_CODE]): an app and its identity app go together.
+ * It also asks to UPDATE it when the installed one is older than the oldest this library works
+ * with ([IdentityClient.MIN_VERSION_CODE], raised only by an incompatible change).
  *
  * `if (!IdentityRequired.check(activity)) return` before anything that speaks as the person.
  */

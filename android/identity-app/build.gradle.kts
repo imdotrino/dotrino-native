@@ -11,7 +11,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// La versión vive en ../identity-version.properties: la misma que exige la librería como mínima.
+// La versión vive en ../identity-version.properties (junto a la mínima que exigen las apps).
 val identityVersion = Properties().apply { file("../identity-version.properties").reader().use { load(it) } }
 
 // FIRMA DE RELEASE: la MISMA llave de subida que com.dotrino.app, de la bóveda (cajón `claude`):

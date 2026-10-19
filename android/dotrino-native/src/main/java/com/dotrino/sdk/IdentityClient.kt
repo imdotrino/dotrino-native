@@ -76,7 +76,10 @@ class IdentityClient(context: Context) {
 
         fun isInstalled(context: Context): Boolean = com.dotrino.sdk.ui.DotrinoApps.isInstalled(context, PACKAGE)
 
-        /** The identity app that came out with this library: an older one has to be updated. */
+        /**
+         * The oldest identity app this library works with (minVersionCode in
+         * identity-version.properties): it only goes up with an incompatible change.
+         */
         const val MIN_VERSION_CODE: Long = com.dotrino.sdk.BuildConfig.IDENTITY_MIN_VERSION_CODE
 
         /** The installed identity app's versionCode, or null when it is not installed. */
@@ -84,7 +87,7 @@ class IdentityClient(context: Context) {
             context.packageManager.getPackageInfo(PACKAGE, 0).longVersionCode
         } catch (_: android.content.pm.PackageManager.NameNotFoundException) { null }
 
-        /** Installed AND at least the one this library came out with. */
+        /** Installed AND at least [MIN_VERSION_CODE]. */
         fun isUpToDate(context: Context): Boolean = installedVersionCode(context).let { it != null && it >= MIN_VERSION_CODE }
 
         /**

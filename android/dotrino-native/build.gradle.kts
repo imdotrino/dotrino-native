@@ -10,9 +10,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-// La Identidad que salió con esta librería es la MÍNIMA que exige (ver el archivo).
+// La Identidad MÍNIMA que exige esta librería: sube solo con un cambio incompatible (ver el archivo).
 val identityVersion = Properties().apply { file("../identity-version.properties").reader().use { load(it) } }
-val identityMinCode: String = identityVersion.getProperty("versionCode") ?: error("identity-version.properties: versionCode missing")
+val identityMinCode: String = identityVersion.getProperty("minVersionCode") ?: error("identity-version.properties: minVersionCode missing")
 
 android {
     namespace = "com.dotrino.sdk"
