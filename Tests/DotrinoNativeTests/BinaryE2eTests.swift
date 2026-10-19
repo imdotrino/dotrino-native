@@ -42,7 +42,8 @@ final class BinaryE2eTests: XCTestCase {
         guard let s = ProcessInfo.processInfo.environment["DOTRINO_E2E_BIN_URL"], let url = URL(string: s) else {
             throw XCTSkip("DOTRINO_E2E_BIN_URL not set: start test-vectors/e2e-binary.mjs to run this")
         }
-        let f = try XCTUnwrap(await fetch(url), "the harness is not ready")
+        let fetched = await fetch(url)
+        let f = try XCTUnwrap(fetched, "the harness is not ready")
         let keys = SoftKeys(s: try .init(rawRepresentation: Crypto.fromB64url(f["sign"]!["d"]!.string!)),
                             e: try .init(rawRepresentation: Crypto.fromB64url(f["enc"]!["d"]!.string!)))
         let profile = Profile.of(keys)
@@ -60,7 +61,8 @@ final class BinaryE2eTests: XCTestCase {
         XCTAssertTrue(Delegation.samePubkey(who, jsPub), "the greeting did not say who")
 
         // What the JS sends: a file by token, a blob by pubkey.
-        let sent = try XCTUnwrap(await poll(URL(string: s + ".sent")!, timeout: 30), "the JS did not send")
+        let sentJson = await poll(URL(string: s + ".sent")!, timeout: 30)
+        let sent = try XCTUnwrap(sentJson, "the JS did not send")
         XCTAssertNil(sent["error"], "the JS could not send: \(sent["error"]?.string ?? "")")
         let end = Date().addingTimeInterval(30)
         while Date() < end, lock.withLock({ got.count }) < 2 { try await Task.sleep(nanoseconds: 200_000_000) }
@@ -79,7 +81,8 @@ final class BinaryE2eTests: XCTestCase {
         try bare.sendByPubkey(jsPub, ["type": "PLAIN", "ok": true], toApp: "vault")
         defer { bare.close() }
         let reply = await poll(URL(string: s + ".reply")!, timeout: 15) { r in ["ACK", "ACK_Q", "PLAIN"].allSatisfy { r[$0] != nil } }
-        let r = try XCTUnwrap(reply, "the JS did not get the three answers: \(await fetch(URL(string: s + ".reply")!)?.text ?? "nothing")")
+        let partial = await fetch(URL(string: s + ".reply")!)?.text ?? "nothing"
+        let r = try XCTUnwrap(reply, "the JS did not get the three answers: \(partial)")
         for (type, sealed) in [("ACK", true), ("ACK_Q", true), ("PLAIN", false)] {
             XCTAssertEqual(r[type]?["sealed"]?.bool, sealed, "\(type) sealed")
             XCTAssertEqual(r[type]?["binary"]?.bool, true, "\(type) arrived as a binary frame")
