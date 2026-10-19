@@ -1,5 +1,6 @@
 import java.io.File
 import java.util.Base64
+import java.util.Properties
 
 // LA APP DE IDENTIDAD de Android (docs/DISENO.md §2.2): guarda las llaves (Keystore), el
 // almacén de la identidad y las cuentas, y atiende a las demás apps de Dotrino por un servicio
@@ -9,6 +10,9 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// La versión vive en ../identity-version.properties: la misma que exige la librería como mínima.
+val identityVersion = Properties().apply { file("../identity-version.properties").reader().use { load(it) } }
 
 // FIRMA DE RELEASE: la MISMA llave de subida que com.dotrino.app, de la bóveda (cajón `claude`):
 //
@@ -39,8 +43,8 @@ android {
         applicationId = "com.dotrino.identity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.2.9"
+        versionCode = identityVersion.getProperty("versionCode")?.toInt() ?: error("identity-version.properties: versionCode missing")
+        versionName = identityVersion.getProperty("versionName") ?: error("identity-version.properties: versionName missing")
     }
     signingConfigs {
         if (uploadKey != null) {

@@ -19,6 +19,9 @@
     <string name="dotrino_identity_needed_install">Install from Google Play</string>
     <string name="dotrino_identity_needed_later">Not now</string>
     <string name="dotrino_identity_needed_note">Free and without ads. You install it once and every Dotrino app uses it.</string>
+    <string name="dotrino_identity_update_heading">Update Dotrino Identity</string>
+    <string name="dotrino_identity_update_message">This app needs a newer version of «Dotrino Identity», the app that keeps your profile. Update it from Google Play and come back here.</string>
+    <string name="dotrino_identity_update_install">Update from Google Play</string>
     <string name="dotrino_profile_cta">My profile</string>
     <string name="dotrino_profiles">Your profiles</string>
     <string name="dotrino_profile_open_mine">Open my profile</string>

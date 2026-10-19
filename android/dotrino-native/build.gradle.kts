@@ -2,11 +2,17 @@
 // bóveda sin WebView. Es un puerto MÍNIMO del pilar JS (@dotrino/identity + el cable de
 // @dotrino/proxy-client), y cada pieza se comprueba contra vectores que genera el propio
 // pilar JS (`../../test-vectors/gen.mjs`): si el JS cambia, estas pruebas lo dicen.
+import java.util.Properties
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+// La Identidad que salió con esta librería es la MÍNIMA que exige (ver el archivo).
+val identityVersion = Properties().apply { file("../identity-version.properties").reader().use { load(it) } }
+val identityMinCode: String = identityVersion.getProperty("versionCode") ?: error("identity-version.properties: versionCode missing")
 
 android {
     namespace = "com.dotrino.sdk"
@@ -15,7 +21,9 @@ android {
         minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")   // R8 en las apps (ver el archivo)
+        buildConfigField("long", "IDENTITY_MIN_VERSION_CODE", "${identityMinCode}L")
     }
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

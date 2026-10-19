@@ -13,23 +13,30 @@ import com.dotrino.sdk.R
  * explains why in this modal, and only then sends to Google Play — never straight to the store.
  * iOS has no identity app, so there is nothing like this there.
  *
+ * It also asks to UPDATE it when the installed one is older than the one this library came out
+ * with ([IdentityClient.MIN_VERSION_CODE]): an app and its identity app go together.
+ *
  * `if (!IdentityRequired.check(activity)) return` before anything that speaks as the person.
  */
 object IdentityRequired {
-    /** True when the identity app is installed; otherwise shows the modal and returns false. */
+    /** True when the identity app is installed and up to date; otherwise shows the modal and returns false. */
     fun check(activity: Activity): Boolean {
-        if (IdentityClient.isInstalled(activity)) return true
+        if (IdentityClient.isUpToDate(activity)) return true
         show(activity)
         return false
     }
 
-    /** Returns the dialog, so an app that needs the identity everywhere can close it on return. */
+    /**
+     * Returns the dialog, so an app that needs the identity everywhere can close it on return.
+     * It says «install» or «update» depending on what is on the phone.
+     */
     fun show(activity: Activity): Dialog {
+        val update = IdentityClient.isInstalled(activity)
         val sheet = DotrinoSheet(activity)
         sheet.appIcon(R.drawable.dotrino_brand)
-        sheet.heading(activity.getString(R.string.dotrino_identity_needed_heading))
-        val msg = sheet.message(activity.getString(R.string.dotrino_identity_needed_message))
-        sheet.button(activity.getString(R.string.dotrino_identity_needed_install), filled = true) {
+        sheet.heading(activity.getString(if (update) R.string.dotrino_identity_update_heading else R.string.dotrino_identity_needed_heading))
+        val msg = sheet.message(activity.getString(if (update) R.string.dotrino_identity_update_message else R.string.dotrino_identity_needed_message))
+        sheet.button(activity.getString(if (update) R.string.dotrino_identity_update_install else R.string.dotrino_identity_needed_install), filled = true) {
             try {
                 activity.startActivity(Intent(Intent.ACTION_VIEW, IdentityClient.installUri))
                 sheet.dialog.dismiss()
@@ -39,7 +46,7 @@ object IdentityRequired {
             }
         }
         sheet.button(activity.getString(R.string.dotrino_identity_needed_later)) { sheet.dialog.dismiss() }
-        sheet.footnote(activity.getString(R.string.dotrino_identity_needed_note))
+        if (!update) sheet.footnote(activity.getString(R.string.dotrino_identity_needed_note))
         return sheet.show()
     }
 }
