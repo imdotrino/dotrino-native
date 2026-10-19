@@ -104,7 +104,7 @@ object Acta {
 
     /** `checkShape`: the reason the record is malformed, or null. */
     fun checkShape(acta: JsonObject?): String? {
-        if (acta == null) return "no-acta"
+        if (acta == null) return "no-record"
         val v = int(acta["v"])
         if (v == null || v !in READABLE) return "version"
         if (!isPub(acta["profileId"]) || !isPub(acta["sealedBy"])) return "shape"

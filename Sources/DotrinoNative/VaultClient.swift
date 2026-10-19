@@ -176,7 +176,7 @@ public final class VaultClient: @unchecked Sendable {
     /// would only hide the reason.
     private func withPaper<T>(_ block: () async throws -> T) async throws -> T {
         do { return try await block() } catch let e as VaultError
-            where ["scope", "stale-record", "untrusted-issuer", "expired", "legacy-cert-retired", "no-acta"].contains(e.code) {
+            where ["scope", "stale-record", "untrusted-issuer", "expired", "legacy-cert-retired", "no-record"].contains(e.code) {
             _ = try await renew()
             return try await block()
         }

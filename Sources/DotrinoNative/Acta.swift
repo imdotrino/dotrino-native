@@ -79,7 +79,7 @@ public enum Acta {
 
     /// `checkShape`: the reason the record is malformed, or nil.
     public static func checkShape(_ acta: JSON?) -> String? {
-        guard let acta, acta.object != nil else { return "no-acta" }
+        guard let acta, acta.object != nil else { return "no-record" }
         guard let v = acta["v"]?.int, readable.contains(v) else { return "version" }
         if !isPub(acta["profileId"]) || !isPub(acta["sealedBy"]) { return "shape" }
         if !isNull(acta["chainUrl"]) && !(acta["chainUrl"]?.string.map(isChainUrl) ?? false) { return "chainurl" }

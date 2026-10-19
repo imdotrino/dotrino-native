@@ -68,7 +68,7 @@ public enum RemoteAgent {
         // A paper of the old model carried a date and no record number: retired here (as in Kotlin).
         guard let seq = cert["seq"]?.int else { return "legacy-cert-retired" }
         if !Crypto.verify(publickey: iss, data: Delegation.body(cert), signature: sig) { return "bad-signature" }
-        guard let actaSeq = acta?["seq"]?.int else { return "no-acta" }
+        guard let actaSeq = acta?["seq"]?.int else { return "no-record" }
         if seq > actaSeq { return "stale-record" }
         if !Acta.sealersOf(acta).contains(iss) { return "untrusted-issuer" }
         return nil

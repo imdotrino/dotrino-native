@@ -49,7 +49,7 @@ final class RemoteAgentTests: XCTestCase {
         let sealer = Keys(), agent = Keys(), stranger = Keys()
         let (acta, cert, ack) = try world(sealer, agent, sealer, seq: 40, actaSeq: 44)
         let sig = try agent.sign(Canonical.stringify(ack))
-        XCTAssertEqual(RemoteAgent.judge(ack, sig, cert, nil), "no-acta")
+        XCTAssertEqual(RemoteAgent.judge(ack, sig, cert, nil), "no-record")
         XCTAssertEqual(RemoteAgent.judge(ack, try stranger.sign(Canonical.stringify(ack)), cert, acta), "bad-action-signature")
         XCTAssertEqual(RemoteAgent.judge(ack, sig, nil, acta), "cert-device-mismatch")
         let (acta2, cert2, ack2) = try world(sealer, agent, sealer, seq: 50, actaSeq: 44)

@@ -120,7 +120,7 @@ object RemoteAgent {
         // a native app was never issued one, and accepting it would be a rule with no test.
         val seq = cert["seq"]?.jsonPrimitive?.longOrNull ?: return "legacy-cert-retired"
         if (!Crypto.verify(iss, Delegation.body(cert), sig)) return "bad-signature"
-        val actaSeq = acta?.get("seq")?.jsonPrimitive?.longOrNull ?: return "no-acta"
+        val actaSeq = acta?.get("seq")?.jsonPrimitive?.longOrNull ?: return "no-record"
         if (seq > actaSeq) return "stale-record"
         if (iss !in Acta.sealersOf(acta)) return "untrusted-issuer"
         return null

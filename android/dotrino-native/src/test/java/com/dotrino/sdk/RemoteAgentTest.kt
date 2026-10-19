@@ -76,7 +76,7 @@ class RemoteAgentTest {
         val sealer = TestKeys.fresh(); val agent = TestKeys.fresh(); val stranger = TestKeys.fresh()
         val (acta, cert, ack) = world(sealer, agent, sealer, seq = 40, actaSeq = 44)
         val sig = agent.sign(Canonical.stringify(ack))
-        assertEquals("no-acta", RemoteAgent.judge(ack, sig, cert, null))
+        assertEquals("no-record", RemoteAgent.judge(ack, sig, cert, null))
         assertEquals("bad-action-signature", RemoteAgent.judge(ack, stranger.sign(Canonical.stringify(ack)), cert, acta))
         assertEquals("cert-device-mismatch", RemoteAgent.judge(ack, sig, null, acta))
         // A paper that names a record newer than mine: I cannot judge it.
