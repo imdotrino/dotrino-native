@@ -46,7 +46,7 @@ en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`). La p
 con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `ActaE2eTest`): con
 `sign` el perfil emite y el espectador lo verifica; tras quitarle `sign`, `needs-vault-signer`.
 
-**El Bluetooth del transporte** (escalón 3: tras WebRTC directo, antes de TURN; contrato en
+**El Bluetooth del transporte** (0.43.0; escalón 3: tras WebRTC directo, antes de TURN; contrato en
 `dotrino-proxy-client/docs/bluetooth.md`):
 
 | Pieza | Qué es | Original en JS |
