@@ -121,6 +121,23 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
 
     /// Bluetooth is on, allowed, and serving.
     public var available: Bool { q.sync { centralOn && peripheralOn && serviceAdded } }
+
+    /// Stops everything: channels, scanning and advertising. The service comes back when
+    /// Bluetooth turns on again or with a new `BluetoothDirect`.
+    public func stop() {
+        q.async {
+            for p in Array(self.peers.values) { self.closed(p) }
+            self.sessions.removeAll()
+            self.wanted.removeAll()
+            self.updateScan()
+            self.peripheralManager.stopAdvertising()
+            self.peripheralManager.removeAllServices()
+            self.serviceAdded = false
+            self.centrals.removeAll()
+            self.notifyQueue.removeAll()
+            self.rotate?.cancel()
+        }
+    }
     private var ready: Bool { centralOn && peripheralOn && serviceAdded }
 
     // MARK: DirectTransport

@@ -170,6 +170,23 @@ class BluetoothDirect(private val context: Context) : DirectTransport {
     /** Bluetooth is on, allowed, and serving. */
     val available: Boolean get() = ready
 
+    /** Stops everything: channels, scanning, advertising and the GATT server. [start] turns it on again. */
+    fun stop() = h.post {
+        peers.values.toList().forEach { closed(it) }
+        sessions.clear()
+        wanted.clear()
+        updateScan()
+        try { manager?.adapter?.bluetoothLeAdvertiser?.stopAdvertising(advCb) } catch (_: SecurityException) {}
+        try { server?.close() } catch (_: SecurityException) {}
+        server = null
+        txChar = null
+        ready = false
+        centrals.clear()
+        notifyQueue.clear()
+        notifying = false
+        h.removeCallbacksAndMessages(null)
+    }
+
     private fun <T> onThread(block: () -> T): T {
         if (android.os.Looper.myLooper() == thread.looper) return block()
         var r: Result<T>? = null
