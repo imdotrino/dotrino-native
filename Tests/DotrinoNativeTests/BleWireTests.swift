@@ -67,4 +67,14 @@ final class BleWireTests: XCTestCase {
         XCTAssertEqual(BleWire.decodeBeacon(beacon)?.data, "cINVITE")
         XCTAssertThrowsError(try BleWire.encodeBeacon(kind: "pair", data: String(repeating: "x", count: 600)))
     }
+
+    func testContactCardIsTheSameText() throws {
+        for e in v["contact"]!.array! {
+            let pk = e["publickey"]!.string!, nick = e["nickname"]!.string!, data = e["data"]!.string!
+            XCTAssertEqual(try BleWire.encodeContact(publickey: pk, nickname: nick), data)
+            XCTAssertEqual(BleWire.decodeContact(data), BleWire.Contact(publickey: pk, nickname: e["decodedNick"]!.string!))
+        }
+        XCTAssertNil(BleWire.decodeContact("to=bm9wZQ"))
+        XCTAssertNil(BleWire.decodeContact("nick=a"))
+    }
 }

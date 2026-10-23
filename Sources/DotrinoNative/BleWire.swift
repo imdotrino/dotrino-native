@@ -68,6 +68,60 @@ public enum BleWire {
         return (k, v)
     }
 
+    // MARK: contact card (docs §3)
+
+    public static let kindPair = "pair"
+    public static let kindContact = "contact"
+    public static let contactNickMax = 40
+    public static let contactNickMaxBytes = 60
+
+    /// A contact card that was announced: the identity's JWK string and the alias.
+    public struct Contact: Equatable {
+        public let publickey: String
+        public let nickname: String
+    }
+
+    /// The alias cut to 40 UTF-16 units and 60 UTF-8 bytes, by whole code points, so it fits in the beacon.
+    public static func trimNick(_ nickname: String) -> String {
+        var out = String.UnicodeScalarView()
+        var units = 0, bytes = 0
+        for sc in nickname.unicodeScalars {
+            let u = sc.utf16.count, b = String(sc).utf8.count
+            if units + u > contactNickMax || bytes + b > contactNickMaxBytes { break }
+            out.append(sc); units += u; bytes += b
+        }
+        return String(out)
+    }
+
+    private static let unreserved = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()".utf8)
+
+    /// `encodeURIComponent`, byte for byte.
+    private static func uriComponent(_ s: String) -> String {
+        var out = ""
+        for b in s.utf8 { if unreserved.contains(b) { out.append(Character(UnicodeScalar(b))) } else { out += String(format: "%%%02X", b) } }
+        return out
+    }
+
+    /// The card announced with `kind: contact`: the messenger's `#to=` fragment, `to=<publickey b64url>&nick=<alias>`.
+    public static func encodeContact(publickey: String, nickname: String = "") throws -> String {
+        guard !publickey.isEmpty else { throw WireError(code: "bad-contact", description: "bluetooth: a contact needs its publickey") }
+        let nick = trimNick(nickname)
+        return "to=" + b64u(Data(publickey.utf8)) + (nick.isEmpty ? "" : "&nick=" + uriComponent(nick))
+    }
+
+    /// The card of an announced `contact`, or nil when it is not understood.
+    public static func decodeContact(_ data: String) -> Contact? {
+        var params: [String: String] = [:]
+        for part in data.split(separator: "&", omittingEmptySubsequences: false) {
+            let kv = part.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            if kv.count == 2, params[String(kv[0])] == nil { params[String(kv[0])] = String(kv[1]) }
+        }
+        guard let to = params["to"], !to.isEmpty, let raw = try? unb64u(to), let publickey = String(data: raw, encoding: .utf8),
+              let jwk = try? JSON.parse(publickey), jwk["x"]?.string != nil, jwk["y"]?.string != nil else { return nil }
+        let nick = params["nick"].flatMap { $0.removingPercentEncoding }.map(trimNick) ?? ""
+        return Contact(publickey: publickey, nickname: nick)
+    }
+
     // MARK: channel key
 
     public static func makeEphemeral() -> (privateKey: P256.KeyAgreement.PrivateKey, epub: String) {

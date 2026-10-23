@@ -75,4 +75,13 @@ class BleWireTest {
         val a = BleWire.makeEphemeral(); val b = BleWire.makeEphemeral()
         assertArrayEquals(BleWire.deriveKey(a.privateKey, b.epub, "x", "y"), BleWire.deriveKey(b.privateKey, a.epub, "y", "x"))
     }
+
+    @Test fun contactCardIsTheSameText() {
+        for (e in v["contact"]!!.jsonArray.map { it.jsonObject }) {
+            assertEquals(s(e, "data"), BleWire.encodeContact(s(e, "publickey"), s(e, "nickname")))
+            assertEquals(BleWire.Contact(s(e, "publickey"), s(e, "decodedNick")), BleWire.decodeContact(s(e, "data")))
+        }
+        assertNull(BleWire.decodeContact("to=bm9wZQ"))
+        assertNull(BleWire.decodeContact("nick=a"))
+    }
 }

@@ -90,6 +90,62 @@ object BleWire {
         } catch (_: Exception) { null }
     }
 
+    // ---- contact card (docs §3) ----
+
+    const val KIND_PAIR = "pair"
+    const val KIND_CONTACT = "contact"
+    const val CONTACT_NICK_MAX = 40
+    const val CONTACT_NICK_MAX_BYTES = 60
+
+    /** A contact card that was announced: the identity's JWK string and the alias. */
+    data class Contact(val publickey: String, val nickname: String)
+
+    /** The alias cut to 40 UTF-16 units and 60 UTF-8 bytes, by whole code points, so it fits in the beacon. */
+    fun trimNick(nickname: String): String {
+        val out = StringBuilder()
+        var bytes = 0
+        var i = 0
+        while (i < nickname.length) {
+            val cp = nickname.codePointAt(i)
+            val ch = String(Character.toChars(cp))
+            val b = ch.toByteArray(Charsets.UTF_8).size
+            if (out.length + ch.length > CONTACT_NICK_MAX || bytes + b > CONTACT_NICK_MAX_BYTES) break
+            out.append(ch); bytes += b; i += ch.length
+        }
+        return out.toString()
+    }
+
+    private const val UNRESERVED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+
+    /** `encodeURIComponent`, byte for byte (java.net.URLEncoder writes spaces as `+` and escapes `!*'()~`). */
+    private fun uriComponent(s: String): String {
+        val sb = StringBuilder()
+        for (b in s.toByteArray(Charsets.UTF_8)) {
+            val c = (b.toInt() and 0xff)
+            if (c < 0x80 && UNRESERVED.indexOf(c.toChar()) >= 0) sb.append(c.toChar()) else sb.append('%').append("%02X".format(c))
+        }
+        return sb.toString()
+    }
+
+    /** The card announced with `kind: contact`: the messenger's `#to=` fragment, `to=<publickey b64url>&nick=<alias>`. */
+    fun encodeContact(publickey: String, nickname: String = ""): String {
+        if (publickey.isEmpty()) throw WireException("bad-contact", "bluetooth: a contact needs its publickey")
+        val nick = trimNick(nickname)
+        return "to=" + b64u(publickey.toByteArray(Charsets.UTF_8)) + (if (nick.isNotEmpty()) "&nick=" + uriComponent(nick) else "")
+    }
+
+    /** The card of an announced `contact`, or null when it is not understood. */
+    fun decodeContact(data: String): Contact? = try {
+        fun param(k: String) = Regex("(?:^|&)$k=([^&]*)").find(data)?.groupValues?.get(1)
+        val to = param("to")
+        if (to.isNullOrEmpty()) null else {
+            val publickey = String(unb64u(to), Charsets.UTF_8)
+            val jwk = json.parseToJsonElement(publickey) as? JsonObject
+            if (jwk == null || (jwk["x"] as? JsonPrimitive)?.isString != true || (jwk["y"] as? JsonPrimitive)?.isString != true) null
+            else Contact(publickey, param("nick")?.let { trimNick(java.net.URLDecoder.decode(it.replace("+", "%2B"), "UTF-8")) } ?: "")
+        }
+    } catch (_: Exception) { null }
+
     // ---- channel key ----
 
     private val p256: ECParameterSpec by lazy {

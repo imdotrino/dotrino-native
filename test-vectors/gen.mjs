@@ -215,6 +215,14 @@ const ble = {
   rxChunks: BW.toChunks(bleRecord, 20).map(b64),
   hello: b64(BW.encodeHello(bleBid)),
   beacon: b64(BW.encodeBeacon('pair', 'cINVITE')),
+  contact: (() => {
+    const publickey = JSON.stringify({ crv: 'P-256', kty: 'EC', x: 'f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU', y: 'x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0' })
+    // Lo que cada lado tiene que escribir igual: espacios, acentos, reservados, un emoji, y el recorte por bytes.
+    return ["Ana María & co (ñ)!*'~", '', '😀'.repeat(30), '中'.repeat(40)].map((nickname) => {
+      const data = BW.encodeContact({ publickey, nickname })
+      return { publickey, nickname, data, decodedNick: BW.decodeContact(data).nickname }
+    })
+  })(),
   uuids: { service: BW.SERVICE_UUID, hello: BW.HELLO_UUID, beacon: BW.BEACON_UUID, rx: BW.RX_UUID, tx: BW.TX_UUID },
 }
 
