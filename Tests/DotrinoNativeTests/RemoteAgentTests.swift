@@ -58,6 +58,49 @@ final class RemoteAgentTests: XCTestCase {
         XCTAssertEqual(RemoteAgent.judge(ack3, try agent.sign(Canonical.stringify(ack3)), cert3, acta3), "untrusted-issuer")
     }
 
+    // ONLY MACHINES OF THE RECORD (audit of 2026-10-23). A paper does not expire: the record decides.
+    /// [acta] with its members changed by [edit].
+    private func withMembers(_ acta: JSON, seq: Int64? = nil, _ edit: ([JSON]) -> [JSON]) -> JSON {
+        guard case .object(var o) = acta, case .array(let m)? = o["members"] else { return acta }
+        o["members"] = .array(edit(m))
+        if let seq { o["seq"] = .int(seq) }
+        return .object(o)
+    }
+
+    func testTheMachineAskedForAndStillInTheRecordIsBelieved() throws {
+        let sealer = Keys(), agent = Keys()
+        let (acta, cert, ack) = try world(sealer, agent, sealer, seq: 40, actaSeq: 44)
+        XCTAssertNil(RemoteAgent.judge(ack, try agent.sign(Canonical.stringify(ack)), cert, acta, agent.publickey))
+    }
+
+    func testAMachineRemovedFromTheRecordIsNotBelievedThoughItsPaperIsStillSigned() throws {
+        let sealer = Keys(), agent = Keys()
+        let (acta, cert, ack) = try world(sealer, agent, sealer, seq: 40, actaSeq: 44)
+        let removed = withMembers(acta, seq: 45) { $0.filter { $0["pub"]?.string != agent.publickey } }
+        XCTAssertEqual(RemoteAgent.judge(ack, try agent.sign(Canonical.stringify(ack)), cert, removed, agent.publickey), "not-in-record")
+    }
+
+    func testAnotherKeyOfTheAccountThatSaysItIsTheMachineIsNotBelieved() throws {
+        let sealer = Keys(), agent = Keys(), other = Keys()
+        // `other` is a member with its own good paper, and answers in the name of `agent`.
+        let (acta, cert, ack) = try world(sealer, other, sealer, seq: 40, actaSeq: 44)
+        guard case .object(var claim) = ack else { return XCTFail("ack") }
+        claim["machine"] = .string(agent.publickey)
+        let signed = JSON.object(claim)
+        XCTAssertEqual(RemoteAgent.judge(signed, try other.sign(Canonical.stringify(signed)), cert, acta, agent.publickey), "wrong-agent")
+    }
+
+    func testAMemberWithoutSignCannotBeTheMachine() throws {
+        let sealer = Keys(), agent = Keys()
+        let (acta, cert, ack) = try world(sealer, agent, sealer, seq: 40, actaSeq: 44)
+        let noSign = withMembers(acta) { $0.map { m in
+            guard m["pub"]?.string == agent.publickey, case .object(var o) = m else { return m }
+            o["caps"] = ["read"]
+            return .object(o)
+        } }
+        XCTAssertEqual(RemoteAgent.judge(ack, try agent.sign(Canonical.stringify(ack)), cert, noSign, agent.publickey), "not-in-record")
+    }
+
     // The tabs of a phone share one connection: an error that names ANOTHER session is not mine.
     func testAnErrorIsForTheSessionItNames() {
         let mine: JSON = ["type": .string(RemoteAgent.errorType), "code": "unknown-session", "sid": "a", "error": "sesión desconocida o expirada"]

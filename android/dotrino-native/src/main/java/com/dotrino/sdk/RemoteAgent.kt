@@ -109,8 +109,13 @@ object RemoteAgent {
      * Is this ack from a device of MY profile? The port of `verifyChain` as the client calls it:
      * the device signed the data, the paper is for that device, a SEALER of my record issued
      * it, and it does not name a record newer than mine. Returns the reason it is not, or null.
+     *
+     * With [agentPubkey] (what `open` passes) two more, the ones the record decides: the key that
+     * SIGNED is the machine that was asked for (`machine` is just a field of the ack), and that
+     * machine is still in my record with `sign`. A paper does not expire, so the one of a machine
+     * the owner removed (stolen) is still well signed: only the record says it is out.
      */
-    internal fun judge(data: JsonObject, signature: String, cert: JsonObject?, acta: JsonObject?): String? {
+    internal fun judge(data: JsonObject, signature: String, cert: JsonObject?, acta: JsonObject?, agentPubkey: String? = null): String? {
         val device = data["publickey"]?.jsonPrimitive?.content ?: return "no-device-pubkey"
         if (!Crypto.verify(device, data, signature)) return "bad-action-signature"
         if (cert == null || cert["sub"]?.jsonPrimitive?.content != device) return "cert-device-mismatch"
@@ -123,7 +128,19 @@ object RemoteAgent {
         val actaSeq = acta?.get("seq")?.jsonPrimitive?.longOrNull ?: return "no-record"
         if (seq > actaSeq) return "stale-record"
         if (iss !in Acta.sealersOf(acta)) return "untrusted-issuer"
+        if (agentPubkey != null) {
+            if (!Delegation.samePubkey(device, agentPubkey)) return "wrong-agent"
+            if (!canGreet(acta, agentPubkey)) return "not-in-record"
+        }
         return null
+    }
+
+    /** The rule of `@dotrino/remote-agent` (`canGreet`): the record names the key and gives it `sign`. */
+    internal fun canGreet(acta: JsonObject?, pub: String): Boolean {
+        val m = (acta?.get("members") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .firstOrNull { Delegation.samePubkey((it["pub"] as? JsonPrimitive)?.content, pub) } ?: return false
+        val named = (m["pub"] as? JsonPrimitive)?.content ?: return false
+        return Acta.memberCan(acta, named, "sign")
     }
 
     // ---------- who is there (probeAgents) ----------
@@ -204,10 +221,11 @@ object RemoteAgent {
         val sid = res["sid"]?.jsonPrimitive?.content ?: throw RemoteAgentError("bad ack", "bad-ack")
         val ackSig = res["signature"]?.jsonPrimitive?.content ?: ""
         val ackCert = res["cert"] as? JsonObject
-        var why = judge(ack, ackSig, ackCert, profile.acta)
-        // The agent's paper is from a record newer than mine: the vault changed it and this phone
-        // has not heard. Catch up and judge again — once; what still fails is said as it is.
-        if (why == "stale-record" && catchUp != null) why = judge(ack, ackSig, ackCert, catchUp().acta)
+        var why = judge(ack, ackSig, ackCert, profile.acta, agentPubkey)
+        // The agent's paper is from a record newer than mine, or my record does not name it yet
+        // (paired a minute ago): the vault changed it and this phone has not heard. Catch up and
+        // judge again — once; what still fails is said as it is.
+        if ((why == "stale-record" || why == "not-in-record") && catchUp != null) why = judge(ack, ackSig, ackCert, catchUp().acta, agentPubkey)
         why?.let { throw RemoteAgentError("that agent is not certified by your vault: $it", "not-mine") }
         if (!Delegation.samePubkey(ack["machine"]?.jsonPrimitive?.content, agentPubkey)) throw RemoteAgentError("the ack came from another agent", "bad-ack")
         if (ack["ceph"]?.jsonPrimitive?.content != ephPub || ack["sid"]?.jsonPrimitive?.content != sid) throw RemoteAgentError("the ack is not for this handshake", "bad-ack")

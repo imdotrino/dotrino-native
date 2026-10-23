@@ -60,7 +60,12 @@ public enum RemoteAgent {
     /// Is this ack from a device of MY profile? The port of `verifyChain` as the client calls it:
     /// the device signed the data, the paper is for that device, a SEALER of my record issued it,
     /// and it does not name a record newer than mine. Returns the reason it is not, or nil.
-    static func judge(_ data: JSON, _ signature: String, _ cert: JSON?, _ acta: JSON?) -> String? {
+    ///
+    /// With [agentPubkey] (what `open` passes) two more, the ones the record decides: the key that
+    /// SIGNED is the machine that was asked for (`machine` is just a field of the ack), and that
+    /// machine is still in my record with `sign`. A paper does not expire, so the one of a machine
+    /// the owner removed (stolen) is still well signed: only the record says it is out.
+    static func judge(_ data: JSON, _ signature: String, _ cert: JSON?, _ acta: JSON?, _ agentPubkey: String? = nil) -> String? {
         guard let device = data["publickey"]?.string else { return "no-device-pubkey" }
         if !Crypto.verify(publickey: device, data: data, signature: signature) { return "bad-action-signature" }
         guard let cert, cert["sub"]?.string == device else { return "cert-device-mismatch" }
@@ -71,7 +76,19 @@ public enum RemoteAgent {
         guard let actaSeq = acta?["seq"]?.int else { return "no-record" }
         if seq > actaSeq { return "stale-record" }
         if !Acta.sealersOf(acta).contains(iss) { return "untrusted-issuer" }
+        if let agentPubkey {
+            if !Delegation.samePubkey(device, agentPubkey) { return "wrong-agent" }
+            if !canGreet(acta, agentPubkey) { return "not-in-record" }
+        }
         return nil
+    }
+
+    /// The rule of `@dotrino/remote-agent` (`canGreet`): the record names the key and gives it `sign`.
+    static func canGreet(_ acta: JSON?, _ pub: String) -> Bool {
+        guard case .array(let members)? = acta?["members"],
+              let named = members.first(where: { Delegation.samePubkey($0["pub"]?.string, pub) })?["pub"]?.string
+        else { return false }
+        return Acta.memberCan(acta, named, "sign")
     }
 
     // MARK: who is there (probeAgents)
@@ -150,10 +167,11 @@ public enum RemoteAgent {
         guard let a = res["ack"]?.objectValue, let sid = res["sid"]?.string else { throw RemoteAgentError("bad ack", code: "bad-ack") }
         let ackSig = res["signature"]?.string ?? ""
         let ackCert = res["cert"]?.objectValue
-        var why = judge(a, ackSig, ackCert, profile.record)
-        // The agent's paper is from a record newer than mine: the vault changed it and this phone
-        // has not heard. Catch up and judge again — once; what still fails is said as it is.
-        if why == "stale-record", let catchUp { why = judge(a, ackSig, ackCert, try await catchUp().record) }
+        var why = judge(a, ackSig, ackCert, profile.record, agentPubkey)
+        // The agent's paper is from a record newer than mine, or my record does not name it yet
+        // (paired a minute ago): the vault changed it and this phone has not heard. Catch up and
+        // judge again — once; what still fails is said as it is.
+        if why == "stale-record" || why == "not-in-record", let catchUp { why = judge(a, ackSig, ackCert, try await catchUp().record, agentPubkey) }
         if let why { throw RemoteAgentError("that agent is not certified by your vault: \(why)", code: "not-mine") }
         if !Delegation.samePubkey(a["machine"]?.string, agentPubkey) { throw RemoteAgentError("the ack came from another agent", code: "bad-ack") }
         if a["ceph"]?.string != ephPub || a["sid"]?.string != sid { throw RemoteAgentError("the ack is not for this handshake", code: "bad-ack") }

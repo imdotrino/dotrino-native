@@ -2,6 +2,7 @@ package com.dotrino.sdk
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -85,6 +86,40 @@ class RemoteAgentTest {
         // A well-signed paper from someone who does not seal this profile.
         val (acta3, cert3, ack3) = world(sealer, agent, stranger, seq = 40, actaSeq = 44)
         assertEquals("untrusted-issuer", RemoteAgent.judge(ack3, agent.sign(Canonical.stringify(ack3)), cert3, acta3))
+    }
+
+    // ONLY MACHINES OF THE RECORD (audit of 2026-10-23). A paper does not expire: the record decides.
+    @Test fun theMachineAskedForAndStillInTheRecordIsBelieved() = runBlocking {
+        val sealer = TestKeys.fresh(); val agent = TestKeys.fresh()
+        val (acta, cert, ack) = world(sealer, agent, sealer, seq = 40, actaSeq = 44)
+        assertNull(RemoteAgent.judge(ack, agent.sign(Canonical.stringify(ack)), cert, acta, agent.publickey))
+    }
+
+    @Test fun aMachineRemovedFromTheRecordIsNotBelievedThoughItsPaperIsStillSigned() = runBlocking {
+        val sealer = TestKeys.fresh(); val agent = TestKeys.fresh()
+        val (acta, cert, ack) = world(sealer, agent, sealer, seq = 40, actaSeq = 44)
+        val members = (acta["members"] as JsonArray).filter { (it as JsonObject)["pub"]?.jsonPrimitive?.content != agent.publickey }
+        val removed = JsonObject(acta + ("seq" to JsonPrimitive(45)) + ("members" to JsonArray(members)))
+        assertEquals("not-in-record", RemoteAgent.judge(ack, agent.sign(Canonical.stringify(ack)), cert, removed, agent.publickey))
+    }
+
+    @Test fun anotherKeyOfTheAccountThatSaysItIsTheMachineIsNotBelieved() = runBlocking {
+        val sealer = TestKeys.fresh(); val agent = TestKeys.fresh(); val other = TestKeys.fresh()
+        // `other` is a member with its own good paper, and answers in the name of `agent`.
+        val (acta, cert, ack) = world(sealer, other, sealer, seq = 40, actaSeq = 44)
+        val claim = JsonObject(ack + ("machine" to JsonPrimitive(agent.publickey)))
+        assertEquals("wrong-agent", RemoteAgent.judge(claim, other.sign(Canonical.stringify(claim)), cert, acta, agent.publickey))
+    }
+
+    @Test fun aMemberWithoutSignCannotBeTheMachine() = runBlocking {
+        val sealer = TestKeys.fresh(); val agent = TestKeys.fresh()
+        val (acta, cert, ack) = world(sealer, agent, sealer, seq = 40, actaSeq = 44)
+        val members = (acta["members"] as JsonArray).map { m ->
+            val o = m as JsonObject
+            if (o["pub"]?.jsonPrimitive?.content == agent.publickey) JsonObject(o + ("caps" to buildJsonArray { add(JsonPrimitive("read")) })) else o
+        }
+        val noSign = JsonObject(acta + ("members" to JsonArray(members)))
+        assertEquals("not-in-record", RemoteAgent.judge(ack, agent.sign(Canonical.stringify(ack)), cert, noSign, agent.publickey))
     }
 
     // The tabs of a phone share one connection: an error that names ANOTHER session is not mine.
