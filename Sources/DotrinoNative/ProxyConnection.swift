@@ -277,7 +277,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
                 return
             }
             // The direct road's signalling is a transport control frame: to WebRTC, not the app.
-            if payload["t"]?.string == rtcTag {
+            if payload["t"]?.string == rtcTag || payload["t"]?.string == BleWire.tag {
                 if let d = lock.withLock({ direct }), let from = o["from"]?.string { d.handleSignal(from: from, payload) }
                 return
             }
@@ -346,7 +346,7 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
     /// The greeting and the direct road's signalling: the JS client only reads them as text.
     private func isControl(_ payload: JSON) -> Bool {
         let t = payload["t"]?.string
-        return t == Self.helloTag || t == rtcTag
+        return t == Self.helloTag || t == rtcTag || t == BleWire.tag
     }
 
     /// A payload to the proxy: control frames as text, everything else as its package.

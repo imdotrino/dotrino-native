@@ -229,7 +229,7 @@ public final class SealedSession: DotrinoNetwork.Source, @unchecked Sendable {
 
     private func deliver(_ c: ProxyConnection, _ inc: ProxyConnection.Incoming) async {
         // The direct road's signalling is a transport control frame: to WebRTC, not the app.
-        if inc.payload["t"]?.string == rtcTag {
+        if inc.payload["t"]?.string == rtcTag || inc.payload["t"]?.string == BleWire.tag {
             if let d = lock.withLock({ direct }), let from = inc.from { d.handleSignal(from: from, inc.payload) }
             return
         }

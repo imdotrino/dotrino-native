@@ -183,6 +183,41 @@ for (const k of [...chainOrder].sort((x, y) => named[x].seq - named[y].seq)) {
 }
 const actaHashes = Object.fromEntries(await Promise.all(Object.entries(named).map(async ([k, a]) => [k, await ActaJs.actaHash(a)])))
 
+// 12) BLUETOOTH (proxy-client docs/bluetooth.md): la llave del canal sale de un ECDH efímero
+//     + HKDF; un registro sellado con un contador fijo es determinista (AES-GCM), y los trozos
+//     hacia un central llevan su etiqueta. Las privadas van en el vector para reproducirlo.
+const BW = await import(join(pcSrc, 'ble/wire.js'))
+const ecdhPair = async () => {
+  const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
+  return { kp, jwk: await crypto.subtle.exportKey('jwk', kp.privateKey), epub: BW.b64u(new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey))) }
+}
+const bleA = await ecdhPair(); const bleB = await ecdhPair()
+const bleTokA = 'tok-A9'; const bleTokB = 'tok-b1'
+const bleSecret = await crypto.subtle.deriveBits({ name: 'ECDH', public: bleB.kp.publicKey }, bleA.kp.privateKey, 256)
+const bleIkm = await crypto.subtle.importKey('raw', bleSecret, 'HKDF', false, ['deriveBits'])
+const [bleLo, bleHi] = bleTokA < bleTokB ? [bleTokA, bleTokB] : [bleTokB, bleTokA]
+const bleRaw = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode(bleLo + '|' + bleHi), info: new TextEncoder().encode('dotrino-ble-v1') }, bleIkm, 256))
+const bleAes = await crypto.subtle.importKey('raw', bleRaw, 'AES-GCM', false, ['encrypt', 'decrypt'])
+// La llave del pilar (no exportable) abre lo que sella la del vector: son la misma.
+const bleKeyB = await BW.deriveKey(bleB.kp.privateKey, bleA.epub, bleTokB, bleTokA)
+const blePlain = '{"hola":"ñandú ✓"}'
+const bleRecord = await BW.sealRecord(bleAes, BW.DIR_TO_CENTRAL, 5, BW.TYPE_TEXT, BW.encodeText(blePlain))
+if (BW.decodeText((await BW.openRecord(bleKeyB, BW.DIR_TO_CENTRAL, 5, bleRecord)).body) !== blePlain) throw new Error('ble vector: keys differ')
+const bleBid = 'q83vEjRWeJA'
+const ble = {
+  a: { privateJwk: bleA.jwk, epub: bleA.epub, token: bleTokA },
+  b: { privateJwk: bleB.jwk, epub: bleB.epub, token: bleTokB },
+  key: b64(bleRaw),
+  record: { dir: BW.DIR_TO_CENTRAL, counter: 5, type: BW.TYPE_TEXT, plain: blePlain, sealed: b64(bleRecord) },
+  bid: bleBid,
+  tag: b64(BW.tagOf(bleBid)),
+  chunks: BW.toChunks(bleRecord, 20, BW.tagOf(bleBid)).map(b64),
+  rxChunks: BW.toChunks(bleRecord, 20).map(b64),
+  hello: b64(BW.encodeHello(bleBid)),
+  beacon: b64(BW.encodeBeacon('pair', 'cINVITE')),
+  uuids: { service: BW.SERVICE_UUID, hello: BW.HELLO_UUID, beacon: BW.BEACON_UUID, rx: BW.RX_UUID, tx: BW.TX_UUID },
+}
+
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
@@ -198,5 +233,6 @@ writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), 
   sealed: { encPrivateJwk: enc.encPrivateJwk, encPub: enc.encPublickey, ctxWrap, ctxEnvelope, ctxPlain },
   cert: { master: masterPub, sub: dev.publickey, cert },
   keyid: { publickey: dev.publickey, id: await pubkeyId(dev.publickey), label: await keyLabel(dev.publickey) },
+  ble,
 }, null, 2))
 console.log('vectors.json written')
