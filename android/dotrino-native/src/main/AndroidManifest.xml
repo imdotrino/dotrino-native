@@ -11,6 +11,12 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Presence: the system prompt (fingerprint, face or the screen lock) before an action that weighs. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- The Bluetooth step of the transport (BluetoothDirect): find, connect and advertise to
+         nearby Dotrino devices. Never used to locate anybody. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <queries>
         <package android:name="com.dotrino.identity" />
         <!-- Las apps del catálogo (DotrinoApps): saber si están instaladas para abrirlas o instalarlas. -->

@@ -209,7 +209,7 @@ class SealedSession(
     private suspend fun deliver(c: ProxyConnection, inc: ProxyConnection.Incoming) {
         // The signalling of the direct road is a control frame of the transport (like the
         // greeting): it carries no user content and goes to the WebRTC layer, not the app.
-        if ((inc.payload["t"] as? kotlinx.serialization.json.JsonPrimitive)?.content == DirectTransport.RTC_TAG) {
+        if ((inc.payload["t"] as? kotlinx.serialization.json.JsonPrimitive)?.content.let { it == DirectTransport.RTC_TAG || it == BleWire.TAG }) {
             val d = direct
             if (d != null && inc.from != null) d.handleSignal(inc.from, inc.payload)
             return

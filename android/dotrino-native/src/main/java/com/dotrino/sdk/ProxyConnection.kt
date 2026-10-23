@@ -185,7 +185,7 @@ class ProxyConnection(
                     return
                 }
                 // The direct road's signalling is a transport control frame: to WebRTC, not the app.
-                if ((payload["t"] as? JsonPrimitive)?.content == DirectTransport.RTC_TAG) {
+                if ((payload["t"] as? JsonPrimitive)?.content.let { it == DirectTransport.RTC_TAG || it == BleWire.TAG }) {
                     val d = direct
                     if (d != null && from != null) d.handleSignal(from, payload)
                     return
@@ -281,7 +281,7 @@ class ProxyConnection(
 
     /** The greeting and the direct road's signalling: the JS client only reads them as text. */
     private fun isControl(payload: JsonObject): Boolean =
-        (payload["t"] as? JsonPrimitive)?.content.let { it == HELLO_TAG || it == DirectTransport.RTC_TAG }
+        (payload["t"] as? JsonPrimitive)?.content.let { it == HELLO_TAG || it == DirectTransport.RTC_TAG || it == BleWire.TAG }
 
     /** A payload to the proxy: control frames as text, everything else as its package. */
     private fun sendPayload(header: JsonObject, payload: JsonObject) {
