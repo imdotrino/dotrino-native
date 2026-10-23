@@ -46,6 +46,19 @@ en el emulador contra la app de identidad real (`PhoneIdentityDeviceTest`). La p
 con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `ActaE2eTest`): con
 `sign` el perfil emite y el espectador lo verifica; tras quitarle `sign`, `needs-vault-signer`.
 
+**El Bluetooth del transporte** (escalón 3: tras WebRTC directo, antes de TURN; contrato en
+`dotrino-proxy-client/docs/bluetooth.md`):
+
+| Pieza | Qué es | Original en JS |
+|---|---|---|
+| `BleWire` | el cable: llave del canal (ECDH efímero + HKDF), registros AES-GCM, trozos con etiqueta, `hello` y `beacon` | `proxy-client/src/ble/wire.js` |
+| `BluetoothDirect` | el escalón sobre CoreBluetooth / la pila de Android: periférico y central a la vez, `announce` y `discover` (sin proxio), `stop()` | `proxy-client/src/ble/manager.js` |
+| `DirectLadder` | junta WebRTC y Bluetooth en un solo canal directo y elige en el orden de la escalera: `useDirect(DirectLadder(webrtc, bluetooth))` | `client.js` `_directFor` |
+
+La app pone el permiso: `NSBluetoothAlwaysUsageDescription` en iOS; en Android pide
+BLUETOOTH_SCAN / CONNECT / ADVERTISE (los declara la librería) y llama a `start()`. Los bytes los
+comprueba el vector `ble` de `vectors.json` en las dos plataformas (`BleWireTests`, `BleWireTest`).
+
 **Hablar con tus otros aparatos** (lo que usa la terminal nativa, y cualquier app que maneje un
 agente — terminal, IA — corriendo en otra máquina de la cuenta):
 
