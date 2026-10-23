@@ -11,3 +11,6 @@ android/*/build/
 android/local.properties
 *.iml
 .idea/
+
+# Estadísticas que escribe el proxio local de los arneses de prueba (cambian en cada corrida)
+usage-stats.json
