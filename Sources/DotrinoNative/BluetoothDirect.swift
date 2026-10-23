@@ -26,6 +26,9 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
     public var acceptFrom: ((String) -> Bool)?
     public var onOpen: (String) -> Void = { _ in }
     public var onClose: (String) -> Void = { _ in }
+    /// What the step is doing (found, connected, read, failed): for diagnosing a channel that does not open.
+    public var onLog: ((String) -> Void)?
+    private func log(_ s: String) { if let f = onLog { out.async { f(s) } } }
 
     private var bid = BleWire.randomBid()
     private var beacon = Data()
@@ -283,6 +286,7 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
     }
 
     private func found(_ p: CBPeripheral) {
+        defer { log("probing \(probing.count), queue \(probeQueue.count), wanted \(wanted.count), sessions \(sessions.count)") }
         let id = p.identifier
         if probing.contains(id) || links[id] != nil { return }
         let needsSession = sessions.values.contains { !$0.done.contains(id) }
@@ -527,25 +531,30 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
 
 extension BluetoothDirect: CBCentralManagerDelegate, CBPeripheralDelegate {
     public func centralManagerDidUpdateState(_ c: CBCentralManager) {
+        log("central state \(c.state.rawValue)")
         centralOn = c.state == .poweredOn
         if !centralOn { scanning = false; for p in Array(peers.values) where p.role == .central { closed(p) } }
         updateScan()
     }
 
     public func centralManager(_ c: CBCentralManager, didDiscover p: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber) {
+        log("discovered \(p.identifier) rssi \(rssi)")
         found(p)
     }
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
+        log("connected \(p.identifier)")
         p.delegate = self
         p.discoverServices([uService])
     }
 
     public func centralManager(_ c: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
+        log("failed to connect \(p.identifier): \(String(describing: error))")
         links[p.identifier]?.onReady?(false)
     }
 
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
+        log("disconnected \(p.identifier): \(String(describing: error))")
         guard let link = links[p.identifier] else { return }
         if let r = link.onReady { r(false); return }
         link.closed = true
@@ -559,19 +568,24 @@ extension BluetoothDirect: CBCentralManagerDelegate, CBPeripheralDelegate {
 
     public func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
         guard let link = links[p.identifier] else { return }
-        guard let svc = p.services?.first(where: { $0.uuid == uService }) else { link.onReady?(false); return }
+        guard let svc = p.services?.first(where: { $0.uuid == uService }) else {
+            log("no Dotrino service on \(p.identifier): \(p.services?.map(\.uuid) ?? []) \(String(describing: error))")
+            link.onReady?(false); return
+        }
         p.discoverCharacteristics([uHello, uBeacon, uRx, uTx], for: svc)
     }
 
     public func peripheral(_ p: CBPeripheral, didDiscoverCharacteristicsFor s: CBService, error: Error?) {
         guard let link = links[p.identifier] else { return }
         for c in s.characteristics ?? [] { link.chars[c.uuid] = c }
+        log("characteristics of \(p.identifier): \(link.chars.keys.map(\.uuidString)) \(String(describing: error))")
         link.onReady?(link.chars[uHello] != nil && link.chars[uRx] != nil && link.chars[uTx] != nil)
     }
 
     public func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {
         guard let link = links[p.identifier] else { return }
         if c.uuid == uTx { if let v = c.value { link.onValue?(v) }; return }
+        log("read \(c.uuid) from \(p.identifier): \(c.value?.count ?? -1) bytes \(String(describing: error))")
         guard var waiting = link.reads[c.uuid], !waiting.isEmpty else { return }
         let done = waiting.removeFirst()
         link.reads[c.uuid] = waiting
@@ -595,6 +609,7 @@ extension BluetoothDirect: CBCentralManagerDelegate, CBPeripheralDelegate {
 
 extension BluetoothDirect: CBPeripheralManagerDelegate {
     public func peripheralManagerDidUpdateState(_ m: CBPeripheralManager) {
+        log("peripheral state \(m.state.rawValue)")
         peripheralOn = m.state == .poweredOn
         if peripheralOn { setUpService() } else {
             serviceAdded = false
@@ -603,7 +618,7 @@ extension BluetoothDirect: CBPeripheralManagerDelegate {
     }
 
     public func peripheralManager(_ m: CBPeripheralManager, didAdd service: CBService, error: Error?) {
-        guard error == nil else { return }
+        guard error == nil else { log("could not add the service: \(String(describing: error))"); return }
         serviceAdded = true
         m.startAdvertising([CBAdvertisementDataServiceUUIDsKey: [uService]])
     }
@@ -616,7 +631,12 @@ extension BluetoothDirect: CBPeripheralManagerDelegate {
         m.respond(to: request, withResult: .success)
     }
 
+    public func peripheralManagerDidStartAdvertising(_ m: CBPeripheralManager, error: Error?) {
+        log("advertising: \(String(describing: error))")
+    }
+
     public func peripheralManager(_ m: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        log("write from \(requests.first?.central.identifier.uuidString ?? "?"): \(requests.count) request(s)")
         for r in requests where r.characteristic.uuid == uRx { if let v = r.value { onWrite(r.central, v) } }
         if let first = requests.first { m.respond(to: first, withResult: .success) }
     }
