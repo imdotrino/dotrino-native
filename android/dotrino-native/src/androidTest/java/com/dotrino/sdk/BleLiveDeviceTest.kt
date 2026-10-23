@@ -21,6 +21,8 @@ import java.util.Collections
  * EL BLUETOOTH EN VIVO, contra otro aparato de verdad cerca (dotrino-proxy-client/docs/bluetooth.md).
  * Se salta sin con quién: `-e BLE_EXPECT <invitación que el otro anuncia>` y `-e BLE_PEER <su token
  * en el proxio>`. Con `-e BLE_ANNOUNCE <texto>` es esta tablet la que anuncia, durante BLE_HOLD_MS.
+ * Con `-e BLE_CONTACT <apodo que el otro anuncia>`, «Cerca» del messenger: las dos tarjetas de contacto
+ * se ven a la vez (esta anuncia la suya y busca en rondas, como la pestaña).
  */
 @RunWith(AndroidJUnit4::class)
 class BleLiveDeviceTest {
@@ -45,6 +47,21 @@ class BleLiveDeviceTest {
         try {
             val found = bt.discover("pair", 20_000)
             assertTrue("found: $found", want in found)
+        } finally { bt.stop() }
+    }
+
+    @Test fun contactCardsSeeEachOther() = runBlocking {
+        val want = args.getString("BLE_CONTACT")
+        assumeTrue("needs -e BLE_CONTACT", want != null)
+        val bt = ready()
+        try {
+            val me = """{"crv":"P-256","kty":"EC","x":"WKn-ZIGevcwGIyyrzFoZNBdaq9_TsqzGl96oc0CWuis","y":"y77t-RvAHRKTsSGdIYUfweuOvwrvDD-Q3Hv5J0fSKbE"}"""
+            val stop = bt.announce(BleWire.KIND_CONTACT, BleWire.encodeContact(me, "Tablet de prueba ñ"))
+            val seen = mutableSetOf<String>()
+            // Rondas seguidas, como la pestaña: buscar una vez y otra no puede fallar.
+            repeat(4) { bt.discover(BleWire.KIND_CONTACT, 6_000).mapNotNull(BleWire::decodeContact).forEach { seen.add(it.nickname) } }
+            stop()
+            assertTrue("seen: $seen", want in seen)
         } finally { bt.stop() }
     }
 
