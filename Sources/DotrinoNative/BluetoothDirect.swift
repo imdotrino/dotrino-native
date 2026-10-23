@@ -8,13 +8,14 @@ import Foundation
 ///
 /// Everything runs on ONE serial queue. The app needs `NSBluetoothAlwaysUsageDescription` in its
 /// Info.plist; without permission, or with Bluetooth off, `available` is false and the step is
-/// simply not there.
+/// simply not there. Nothing touches the radio until `start()` (the first one asks for the
+/// permission), so it can be built and plugged in at launch and turned on when it is wanted.
 public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendable {
     private let q = DispatchQueue(label: "dotrino-ble")
     /// Arrivals go to the app from HERE, in order: answering from inside `q` would deadlock.
     private let out = DispatchQueue(label: "dotrino-ble-out")
-    private var central: CBCentralManager!
-    private var peripheralManager: CBPeripheralManager!
+    private var central: CBCentralManager?
+    private var peripheralManager: CBPeripheralManager?
     private var centralOn = false, peripheralOn = false, serviceAdded = false
 
     private var selfToken: () -> String? = { nil }
@@ -112,15 +113,21 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
         init(kind: String, onFound: ((String) -> Void)?) { self.kind = kind; self.onFound = onFound }
     }
 
-    public override init() {
-        super.init()
-        central = CBCentralManager(delegate: self, queue: q)
-        peripheralManager = CBPeripheralManager(delegate: self, queue: q)
-        let t = DispatchSource.makeTimerSource(queue: q)
-        t.schedule(deadline: .now() + BleWire.bidRotateSeconds, repeating: BleWire.bidRotateSeconds)
-        t.setEventHandler { [weak self] in self?.bid = BleWire.randomBid() }
-        t.resume()
-        rotate = t
+    public override init() { super.init() }
+
+    /// Starts serving and advertising (the first time, iOS asks for the permission). Again after `stop()`, it comes back.
+    public func start() {
+        q.async {
+            guard self.central == nil else { return }
+            self.bid = BleWire.randomBid()
+            self.central = CBCentralManager(delegate: self, queue: self.q)
+            self.peripheralManager = CBPeripheralManager(delegate: self, queue: self.q)
+            let t = DispatchSource.makeTimerSource(queue: self.q)
+            t.schedule(deadline: .now() + BleWire.bidRotateSeconds, repeating: BleWire.bidRotateSeconds)
+            t.setEventHandler { [weak self] in self?.bid = BleWire.randomBid() }
+            t.resume()
+            self.rotate = t
+        }
     }
 
     deinit { rotate?.cancel() }
@@ -128,20 +135,24 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
     /// Bluetooth is on, allowed, and serving.
     public var available: Bool { q.sync { centralOn && peripheralOn && serviceAdded } }
 
-    /// Stops everything: channels, scanning and advertising. The service comes back when
-    /// Bluetooth turns on again or with a new `BluetoothDirect`.
+    /// Stops everything: channels, scanning, advertising and the radio. `start()` turns it on again.
     public func stop() {
         q.async {
             for p in Array(self.peers.values) { self.closed(p) }
             self.sessions.removeAll()
             self.wanted.removeAll()
             self.updateScan()
-            self.peripheralManager.stopAdvertising()
-            self.peripheralManager.removeAllServices()
+            for l in Array(self.links.values) { self.dropLink(l) }
+            self.probing.removeAll(); self.probeQueue.removeAll(); self.probeBusy = false; self.seen.removeAll()
+            self.peripheralManager?.stopAdvertising()
+            self.peripheralManager?.removeAllServices()
             self.serviceAdded = false
             self.centrals.removeAll()
             self.notifyQueue.removeAll()
-            self.rotate?.cancel()
+            self.rotate?.cancel(); self.rotate = nil
+            self.central?.delegate = nil; self.central = nil
+            self.peripheralManager?.delegate = nil; self.peripheralManager = nil
+            self.centralOn = false; self.peripheralOn = false; self.scanning = false
         }
     }
     private var ready: Bool { centralOn && peripheralOn && serviceAdded }
@@ -281,10 +292,10 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
         let want = centralOn && (!wanted.isEmpty || !sessions.isEmpty)
         if want && !scanning {
             scanning = true
-            central.scanForPeripherals(withServices: [uService], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+            central?.scanForPeripherals(withServices: [uService], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         } else if !want && scanning {
             scanning = false
-            central.stopScan()
+            central?.stopScan()
         }
     }
 
@@ -344,7 +355,7 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
                 }
             }
         }
-        central.connect(p)
+        central?.connect(p)
     }
 
     private func read(_ link: Link, _ uuid: CBUUID, _ done: @escaping (Data?) -> Void) {
@@ -378,7 +389,7 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
         guard !link.closed else { return }
         link.closed = true
         links.removeValue(forKey: link.p.identifier)
-        central.cancelPeripheralConnection(link.p)
+        central?.cancelPeripheralConnection(link.p)
         let cb = link.onClose
         link.onClose = nil
         cb?()
@@ -401,7 +412,7 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
         txChar = tx
         let svc = CBMutableService(type: uService, primary: true)
         svc.characteristics = [hello, bcn, rx, tx]
-        peripheralManager.add(svc)
+        peripheralManager?.add(svc)
     }
 
     private func onWrite(_ c: CBCentral, _ bytes: Data) {
@@ -442,9 +453,9 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
     }
 
     private func pumpNotify() {
-        guard let tx = txChar else { return }
+        guard let tx = txChar, let pm = peripheralManager else { return }
         while let (c, chunk) = notifyQueue.first {
-            if !peripheralManager.updateValue(chunk, for: tx, onSubscribedCentrals: [c]) { return }   // wait for isReady
+            if !pm.updateValue(chunk, for: tx, onSubscribedCentrals: [c]) { return }   // wait for isReady
             notifyQueue.removeFirst()
         }
     }

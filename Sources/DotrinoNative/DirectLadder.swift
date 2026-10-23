@@ -3,7 +3,7 @@ import Foundation
 /// THE LADDER of direct roads (`dotrino-proxy-client/docs/bluetooth.md` §1): WebRTC when it goes
 /// direct, else Bluetooth, else WebRTC through TURN — the proxy is what is left when this says
 /// false. Both negotiate in parallel and never block. Plug it where one road went:
-/// `session.useDirect(DirectLadder(webrtc: WebRTCDirect(), bluetooth: BluetoothDirect()))`.
+/// `session.useDirect(DirectLadder(webrtc: WebRTCDirect(), bluetooth: bt))`, and `bt.start()` when it is wanted.
 public final class DirectLadder: DirectTransport, @unchecked Sendable {
     public let webrtc: DirectTransport?
     public let bluetooth: BluetoothDirect?
