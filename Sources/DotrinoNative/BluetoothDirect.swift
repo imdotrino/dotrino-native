@@ -98,6 +98,9 @@ public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendab
         var onClose: (() -> Void)?
         var closed = false
         var owner: Peer?
+        /// Already rediscovered once after a stale cache (`invalidHandle`): a second one is a real failure.
+        var refreshed = false
+        var onRediscovered: (() -> Void)?
         init(_ p: CBPeripheral) { self.p = p }
     }
 
@@ -579,6 +582,7 @@ extension BluetoothDirect: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let link = links[p.identifier] else { return }
         for c in s.characteristics ?? [] { link.chars[c.uuid] = c }
         log("characteristics of \(p.identifier): \(link.chars.keys.map(\.uuidString)) \(String(describing: error))")
+        if let again = link.onRediscovered { link.onRediscovered = nil; again(); return }
         link.onReady?(link.chars[uHello] != nil && link.chars[uRx] != nil && link.chars[uTx] != nil)
     }
 
@@ -586,6 +590,21 @@ extension BluetoothDirect: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let link = links[p.identifier] else { return }
         if c.uuid == uTx { if let v = c.value { link.onValue?(v) }; return }
         log("read \(c.uuid) from \(p.identifier): \(c.value?.count ?? -1) bytes \(String(describing: error))")
+        // UNA TABLA GATT VIEJA EN CACHÉ: iOS recuerda las direcciones de un aparato que ya vio, y si
+        // el otro las cambió (registró de nuevo su servicio) la lectura vuelve con «handle inválido».
+        // Se vuelven a descubrir los servicios y se repite la lectura, una vez.
+        if (error as? CBATTError)?.code == .invalidHandle, !link.refreshed {
+            link.refreshed = true
+            let uuid = c.uuid
+            link.chars = [:]
+            link.onRediscovered = { [weak self, weak link] in
+                guard let self, let link else { return }
+                if let fresh = link.chars[uuid] { link.p.readValue(for: fresh) }
+                else { let w = link.reads.removeValue(forKey: uuid) ?? []; w.forEach { $0(nil) } }
+            }
+            p.discoverServices([uService])
+            return
+        }
         guard var waiting = link.reads[c.uuid], !waiting.isEmpty else { return }
         let done = waiting.removeFirst()
         link.reads[c.uuid] = waiting
