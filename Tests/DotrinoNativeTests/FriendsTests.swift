@@ -99,7 +99,8 @@ final class FriendsTests: XCTestCase {
         let net = Net()
         let ana = await Person(net, "Ana"), beto = await Person(net, "Beto")
         await ana.friends.refreshCode()
-        let code = try XCTUnwrap(await ana.friends.code)
+        let c0 = await ana.friends.code
+        let code = try XCTUnwrap(c0)
         try await beto.friends.requestByCode(code.lowercased(), alias: "Anita")
         await until("request") { await ana.friends.incoming.count == 1 }
         XCTAssertEqual(ana.requests.count, 1, "the app was told")
@@ -119,7 +120,8 @@ final class FriendsTests: XCTestCase {
         let net = Net()
         let ana = await Person(net, "Ana")
         await ana.friends.refreshCode()
-        let mine = try XCTUnwrap(await ana.friends.code)
+        let c0 = await ana.friends.code
+        let mine = try XCTUnwrap(c0)
         do { try await ana.friends.requestByCode(mine, alias: ""); XCTFail("own code") } catch let e as Friends.FriendsError { XCTAssertEqual(e.code, "own") }
         do { try await ana.friends.requestByCode("xx", alias: ""); XCTFail("bad code") } catch let e as Friends.FriendsError { XCTAssertEqual(e.code, "invalid") }
         do { try await ana.friends.requestByCode("N2P4QR", alias: ""); XCTFail("unknown code") } catch let e as Friends.FriendsError { XCTAssertEqual(e.code, "invalid") }
@@ -164,7 +166,8 @@ final class FriendsTests: XCTestCase {
         let card = try cardFor(owner, k1, k2)
         let ana = await Person(net, "Ana"), b1 = await Person(net, "Beto1", keys: k1, acta: acta(card)), b2 = await Person(net, "Beto2", keys: k2, acta: acta(card))
         await ana.friends.refreshCode()
-        try await b1.friends.requestByCode(try XCTUnwrap(await ana.friends.code), alias: "")
+        let c0 = await ana.friends.code
+        try await b1.friends.requestByCode(try XCTUnwrap(c0), alias: "")
         await until("request") { await ana.friends.incoming.count == 1 }
         let req = await ana.friends.incoming
         XCTAssertEqual(req.first?.pubkey, owner.publickey, "kept by the account, not the device")
