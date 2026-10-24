@@ -115,9 +115,12 @@ class AddFriendSheet(
             setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             setWindowAnimations(android.R.style.Animation_InputMethod)
         }
-        dialog.setOnDismissListener { stopNearby() }
+        dialog.setOnDismissListener { stopNearby(); onClosed() }
         render()
     }
+
+    /** La hoja se cerró (ya no anuncia nada). */
+    var onClosed: () -> Unit = {}
 
     fun show() = dialog.show()
 
