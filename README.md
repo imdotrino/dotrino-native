@@ -71,6 +71,16 @@ En iOS la app declara `NSLocalNetworkUsageDescription` y `NSBonjourServices: ["_
 Android no pide nada más. Vector `lan` en `LanWireTests` / `LanWireTest`; en vivo, `LanLiveTests`
 (iOS, el simulador usa la red de la Mac) y `LanLiveDeviceTest` (Android).
 
+**Amigos** (puerto de `@dotrino/profile/friends`; mismo cable, `CONTACT_REQUEST` / `CONTACT_ACCEPT`):
+
+| Pieza | Qué hace |
+|---|---|
+| `Friends` | la libreta por cuenta sobre `PeerBook`, la bandeja de solicitudes (24 h, en un `Kv`), tu código de 6 caracteres (`code`, `refreshCode`, `requestByCode`), pedir por llave o enlace (`request`), `accept` / `dismiss`, lo que llega (`receive`: autentica por la llave que selló, descarta bloqueados, atiende las solicitudes y devuelve el resto con quién lo mandó), y `send` a TODOS los aparatos de un amigo. Lo de la app entra por ganchos: `onRequest`, `onFriend`, `onMoved`, `onProfile`, `isVouched` |
+| `FriendsTransport` / `SessionTransport` | lo que `Friends` necesita del transporte (la sesión sellada); una interfaz para probarlo en la JVM sin proxio |
+| `ui/AddFriendSheet` (Android) | la hoja «Añadir contacto»: por código (teclear, pegar, escanear), mi código con su QR, y «Cerca» con `Nearby` (Bluetooth + red local). La app le pasa el escáner, el permiso de Bluetooth y sus colores (`Palette`) |
+
+Pruebas: `FriendsTest` (dos personas con sellado de verdad sobre un proxio en memoria).
+
 **Hablar con tus otros aparatos** (lo que usa la terminal nativa, y cualquier app que maneje un
 agente — terminal, IA — corriendo en otra máquina de la cuenta):
 
