@@ -226,6 +226,15 @@ const ble = {
   uuids: { service: BW.SERVICE_UUID, hello: BW.HELLO_UUID, beacon: BW.BEACON_UUID, rx: BW.RX_UUID, tx: BW.TX_UUID },
 }
 
+// 7b) LA RED LOCAL (dotrino-proxy-client/docs/lan.md): las cadenas del TXT, en orden, para
+// una carga corta, una de varios trozos con letras de dos bytes en el corte, y la más larga.
+const LW = await import(join(pcSrc, 'lan/mdns.js'))
+const lan = {
+  service: LW.SERVICE,
+  cases: [['contact', 'to=abc&nick=Prueba%20%C3%B1'], ['pair', 'c' + 'é'.repeat(200)], ['pair', 'x'.repeat(LW.MAX_DATA)]]
+    .map(([kind, data]) => ({ kind, data, txt: LW.txtEntries(kind, data).map(b64) })),
+}
+
 writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), JSON.stringify({
   profile: { encPrivateJwk: phoneEnc.encPrivateJwk, encPub: phoneEnc.encPublickey, encKeyId: (await pubkeyId(phoneEnc.encPublickey)).slice(0, 16), senderEncPub, envelope: profileEnvelope, plain: profilePlain },
   appSealed: { app: 'messenger', envelope: appSealed, msg: sealedMsg, senderEncPub },
@@ -242,5 +251,6 @@ writeFileSync(join(here, '../Tests/DotrinoNativeTests/Resources/vectors.json'), 
   cert: { master: masterPub, sub: dev.publickey, cert },
   keyid: { publickey: dev.publickey, id: await pubkeyId(dev.publickey), label: await keyLabel(dev.publickey) },
   ble,
+  lan,
 }, null, 2))
 console.log('vectors.json written')
