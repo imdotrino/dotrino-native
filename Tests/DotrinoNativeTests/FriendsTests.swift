@@ -71,7 +71,13 @@ final class FriendsTests: XCTestCase {
             await friends.setHooks(h)
             _ = phone.onMessage { [weak self] m in
                 guard let self else { return }
-                Task { if let r = await self.friends.receive(m), !r.handled, r.who.contact != nil { self.others.append(m.payload["type"]?.string ?? "?") } }
+                // Como haría la app con lo que no es del protocolo (un HELLO): su tarjeta y, si toca, pasar a su cuenta.
+                Task {
+                    guard let r = await self.friends.receive(m), !r.handled, r.who.contact != nil else { return }
+                    self.others.append(m.payload["type"]?.string ?? "?")
+                    await self.friends.noteProfile(r.who.pubkey, m.payload)
+                    _ = await self.friends.upgradeToAccount(r.who, m.payload)
+                }
             }
         }
         var pubkey: String { phone.profile.publickey }
