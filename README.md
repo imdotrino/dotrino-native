@@ -116,6 +116,9 @@ del usuario por mensaje dirigido — CONVENCIONES §4.1):
 El camino directo se probó contra el pilar JS real (`test-vectors/e2e-direct.mjs` +
 `DirectE2eTest` en el emulador y `DirectE2eTests` en el simulador): el primer mensaje sale por
 el proxio, el canal se abre por debajo y el siguiente va por WebRTC, sellado igual.
+Desde 0.46.1 el canal se abre también cuando el que quiere ir directo es el del token menor:
+le pide el canal al otro con `kind: 'start'`, como el pilar JS ≥ 0.38.4. Antes esa mitad de las
+parejas se quedaba en el proxio.
 
 El respaldo se probó contra una bóveda de verdad (`test-vectors/e2e-store.mjs` +
 `VaultBackupE2eTest`/`VaultBackupE2eTests`), y sus reglas contra el propio pilar (huella y plan en

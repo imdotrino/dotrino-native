@@ -104,17 +104,7 @@ class WebRtcDirect(context: Context) : DirectTransport {
         return runCatching { dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), true)) }.getOrDefault(false)
     }
 
-    override fun upgrade(token: String) = exec.execute {
-        val p = peer(token)
-        if (p.negotiating || p.failed || isOpen(token)) return@execute
-        p.negotiating = true
-        try {
-            if (p.pc == null) createPc(p)
-            // The side with the greater token opens the channel; the other gets it (`onDataChannel`).
-            val self = selfToken()
-            if (self != null && self > token && p.dc == null) attach(p, p.pc!!.createDataChannel("cc", DataChannel.Init().apply { ordered = true }))
-        } catch (e: Exception) { onWarn("webrtc start with $token", e); fail(p) }
-    }
+    override fun upgrade(token: String) = exec.execute { startNegotiation(peer(token)) }
 
     override fun handleSignal(from: String, msg: JsonObject) = exec.execute {
         if (acceptFrom?.invoke(from) == false) return@execute
@@ -132,6 +122,22 @@ class WebRtcDirect(context: Context) : DirectTransport {
     // ---------- internals (all on exec) ----------
 
     private fun peer(token: String) = peers.getOrPut(token) { Peer(token) }
+
+    private fun startNegotiation(p: Peer) {
+        if (p.negotiating || p.failed || isOpen(p.remote)) return
+        p.negotiating = true
+        try {
+            if (p.pc == null) createPc(p)
+            // The side with the greater token opens the channel; the other gets it (`onDataChannel`).
+            val self = selfToken() ?: return
+            if (p.dc != null) return
+            if (self > p.remote) attach(p, p.pc!!.createDataChannel("cc", DataChannel.Init().apply { ordered = true }))
+            // THE ONE THAT DOES NOT CREATE THE CHANNEL HAS TO ASK FOR IT (`kind: 'start'` of the
+            // JS): with no new channel there is nothing to negotiate, so if the smaller token
+            // wanted to go direct the other side would never know and the channel never opened.
+            else if (self < p.remote) signal(p, buildJsonObject { put("kind", "start") })
+        } catch (e: Exception) { onWarn("webrtc start with ${p.remote}", e); fail(p) }
+    }
 
     private fun signal(p: Peer, body: JsonObject) = signalSend(p.remote, JsonObject(mapOf("t" to JsonPrimitive(DirectTransport.RTC_TAG)) + body))
 
@@ -183,6 +189,12 @@ class WebRtcDirect(context: Context) : DirectTransport {
     private fun onSignal(p: Peer, msg: JsonObject) {
         val pc = p.pc ?: createPc(p)
         when ((msg["kind"] as? JsonPrimitive)?.content) {
+            // The other wants to go direct and the channel is ours to create. Only the greater
+            // token answers it, so a `start` never bounces.
+            "start" -> {
+                val self = selfToken()
+                if (self != null && self > p.remote && p.dc == null) { p.negotiating = false; startNegotiation(p) }
+            }
             "sdp" -> {
                 val o = msg["sdp"] as? JsonObject ?: return
                 val type = o["type"]?.jsonPrimitive?.content ?: return

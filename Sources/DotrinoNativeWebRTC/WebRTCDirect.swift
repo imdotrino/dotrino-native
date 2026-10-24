@@ -74,18 +74,7 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
         return dc.sendData(RTCDataBuffer(data: bytes, isBinary: true))
     }
 
-    public func upgrade(_ token: String) {
-        q.async {
-            let p = self.peer(token)
-            if p.negotiating || p.failed || self.isOpen(token) { return }
-            p.negotiating = true
-            guard let pc = p.pc ?? self.createPc(p) else { p.failed = true; return }
-            if let me = self.selfToken(), me > token, p.dc == nil {
-                let cfg = RTCDataChannelConfiguration(); cfg.isOrdered = true
-                if let dc = pc.dataChannel(forLabel: "cc", configuration: cfg) { self.attach(p, dc) }
-            }
-        }
-    }
+    public func upgrade(_ token: String) { q.async { self.startNegotiation(self.peer(token)) } }
 
     public func handleSignal(from: String, _ msg: JSON) {
         q.async {
@@ -104,6 +93,23 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     public func closeAll() { for t in peersLock.withLock({ Array(peers.keys) }) { close(t) } }
 
     // MARK: internals (on q)
+
+    private func startNegotiation(_ p: Peer) {
+        if p.negotiating || p.failed || isOpen(p.remote) { return }
+        p.negotiating = true
+        guard let pc = p.pc ?? createPc(p) else { fail(p); return }
+        // The side with the greater token opens the channel; the other gets it (`didOpen`).
+        guard let me = selfToken(), p.dc == nil else { return }
+        if me > p.remote {
+            let cfg = RTCDataChannelConfiguration(); cfg.isOrdered = true
+            if let dc = pc.dataChannel(forLabel: "cc", configuration: cfg) { attach(p, dc) }
+        } else if me < p.remote {
+            // THE ONE THAT DOES NOT CREATE THE CHANNEL HAS TO ASK FOR IT (`kind: 'start'` of the
+            // JS): with no new channel there is nothing to negotiate, so if the smaller token
+            // wanted to go direct the other side would never know and the channel never opened.
+            signal(p, ["kind": "start"])
+        }
+    }
 
     private func signal(_ p: Peer, _ body: [String: JSON]) {
         var o = body; o["t"] = .string(rtcTag)
@@ -146,6 +152,10 @@ public final class WebRTCDirect: NSObject, DirectTransport, @unchecked Sendable 
     private func onSignal(_ p: Peer, _ msg: JSON) {
         guard let pc = p.pc ?? createPc(p) else { return }
         switch msg["kind"]?.string {
+        case "start":
+            // The other wants to go direct and the channel is ours to create. Only the greater
+            // token answers it, so a `start` never bounces.
+            if let me = selfToken(), me > p.remote, p.dc == nil { p.negotiating = false; startNegotiation(p) }
         case "sdp":
             guard let type = msg["sdp"]?["type"]?.string, let text = msg["sdp"]?["sdp"]?.string else { return }
             let collision = type == "offer" && (p.makingOffer || pc.signalingState != .stable)
