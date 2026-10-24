@@ -71,6 +71,20 @@ En iOS la app declara `NSLocalNetworkUsageDescription` y `NSBonjourServices: ["_
 Android no pide nada más. Vector `lan` en `LanWireTests` / `LanWireTest`; en vivo, `LanLiveTests`
 (iOS, el simulador usa la red de la Mac) y `LanLiveDeviceTest` (Android).
 
+**Amigos** (el puerto de `@dotrino/profile/friends`, sacado del messenger: cualquier app añade y
+acepta amigos, y aparecen en todas porque la libreta es la de la identidad).
+
+iOS:
+
+| Pieza | Qué hace |
+|---|---|
+| `Friends` (actor) | libreta por cuenta sobre `PeerBook` (a qué aparatos se escribe, quién escribió de verdad, bloqueados, fijos), bandeja de 24 h, `CONTACT_REQUEST` / `CONTACT_ACCEPT` sellados, tu código de 6 caracteres (`code`, `refreshCode`, `requestByCode`), `request(pubkey:alias:card:token:)`, `accept`, `dismiss`, `receive(_:)` → `Received(who, handled)`, `send` a todos los aparatos, presencia. Lo de la app entra por `Hooks` (`onRequest`, `onFriend`, `onMoved`, `onProfile`, `isVouched`, `onChange`) |
+| `FriendsTransport`, `KeyValueStore` | lo que necesita: la sesión sellada (`SealedSession` ya lo cumple) y dónde guardar la bandeja |
+| `FriendLink` | el enlace `#to=<llave>&nick=…&card=…` |
+| `AddFriendSheet` (DotrinoNativeUI) | la hoja de añadir: por código (tecleado, pegado, escaneado o de una foto), mi código con su QR y «Cerca» con `Nearby` (Bluetooth + red local). La app declara `NSLocalNetworkUsageDescription`, `NSBonjourServices` y `NSBluetoothAlwaysUsageDescription` |
+
+Pruebas: `FriendsTests` (instancias reales, sellado real, proxio en memoria).
+
 **Hablar con tus otros aparatos** (lo que usa la terminal nativa, y cualquier app que maneje un
 agente — terminal, IA — corriendo en otra máquina de la cuenta):
 
