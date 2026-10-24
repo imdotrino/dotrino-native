@@ -4,7 +4,7 @@ import Foundation
 /// `@dotrino/proxy-client`. Same piece as `DirectTransport.kt`. The core does not carry
 /// libwebrtc; it is plugged into `SealedSession` from `DotrinoNativeWebRTC`.
 ///
-/// Wire-compatible with the JS: signalling through the proxy as `{ t: "__cc_rtc__", kind: "sdp" |
+/// Wire-compatible with the JS: signalling through the proxy as `{ t: "__cc_rtc__", kind: "start" | "sdp" |
 /// "ice", … }`, a data channel `cc` (ordered) opened by the peer with the greater token, and the
 /// same in it that would have gone through the proxy. This library sends packages in binary
 /// messages, and reads text too (what an older JS client sends). Never blocks.

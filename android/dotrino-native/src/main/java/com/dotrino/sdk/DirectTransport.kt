@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonObject
  * into [SealedSession] from a separate module (`dotrino-webrtc`).
  *
  * Wire-compatible with the JS: signalling goes through the proxy as `{ t: '__cc_rtc__', kind:
- * 'sdp' | 'ice', … }`; the data channel is `cc`, ordered, opened by the peer with the greater
+ * 'start' | 'sdp' | 'ice', … }`; the data channel is `cc`, ordered, opened by the peer with the greater
  * token; what travels in it is what would have gone through the proxy. This library sends
  * packages in binary messages, and reads text too (what an older JS client sends).
  *
