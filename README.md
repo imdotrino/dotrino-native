@@ -59,6 +59,18 @@ La app pone el permiso: `NSBluetoothAlwaysUsageDescription` en iOS; en Android p
 BLUETOOTH_SCAN / CONNECT / ADVERTISE (los declara la librería). En las dos, llama a `start()` cuando lo quiere encendido. Los bytes los
 comprueba el vector `ble` de `vectors.json` en las dos plataformas (`BleWireTests`, `BleWireTest`).
 
+**Cerca: Bluetooth y red local a la vez** (0.45.0; contrato en `dotrino-proxy-client/docs/lan.md`):
+
+| Pieza | Qué hace | Igual que |
+|---|---|---|
+| `LanWire` | el TXT del servicio `_dotrino._tcp`: `{kind, data}` en trozos de 200 bytes | `proxy-client/src/lan/mdns.js` |
+| `LanDiscovery` | anunciar y buscar en la red local: NSD en Android, Bonjour (`dns_sd` + `NWBrowser`) en iOS. No abre puertos | `announceLan` / `discoverLan` |
+| `Nearby` | lo que usan las apps: `announce` y `discover` por los dos medios a la vez (el Bluetooth solo si está encendido) | `announceNearby` / `discoverNearby` |
+
+En iOS la app declara `NSLocalNetworkUsageDescription` y `NSBonjourServices: ["_dotrino._tcp"]`; en
+Android no pide nada más. Vector `lan` en `LanWireTests` / `LanWireTest`; en vivo, `LanLiveTests`
+(iOS, el simulador usa la red de la Mac) y `LanLiveDeviceTest` (Android).
+
 **Hablar con tus otros aparatos** (lo que usa la terminal nativa, y cualquier app que maneje un
 agente — terminal, IA — corriendo en otra máquina de la cuenta):
 
