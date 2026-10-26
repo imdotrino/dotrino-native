@@ -151,6 +151,12 @@ admite más de ~512 KB por mensaje (y un String viaja en UTF-16). Petición y re
 trozos de 100 000 caracteres (`IdentityClient.split` + `Joiner`, Identidad ≥ 0.2.4): el almacén
 de la identidad con fotos de perfil pasaba de ese tope y las páginas se quedaban sin perfiles.
 
+**El ancla de la bitácora** (0.47.0): `LogAnchor.compare` es lo que decide el aprobador con el
+aviso `log-anchor` que la bóveda (≥ 0.104.0) manda callado cada pocas horas: la cabeza de su
+bitácora sellada por el signer. Un `logSeq` menor que el guardado, o el mismo con otra cabeza,
+es que cortaron o reescribieron el final. Guardar la última por cuenta es de la app. Original
+en JS: `compareAnchor` de `@dotrino/vault` (`lib/src/core/logAnchor.js`).
+
 **No hace el emparejamiento.** El alta la hace el pilar JS de siempre (la consola, con
 `enrollDevice` y un firmador externo), firmando con la llave del chip.
 
