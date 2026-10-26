@@ -29,11 +29,16 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
     public let product: String?
     public let deviceId: String?
     public let label: String?
+    /// `log-anchor` only: the vault's log head (`logSeq` + its hash), sealed by the signer.
+    public let logSeq: Int64?
+    public let head: String?
 
     public init(id: String, ev: String, version: String, from: String, ts: Int64,
-                product: String? = nil, deviceId: String? = nil, label: String? = nil) {
+                product: String? = nil, deviceId: String? = nil, label: String? = nil,
+                logSeq: Int64? = nil, head: String? = nil) {
         self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
         self.product = product; self.deviceId = deviceId; self.label = label
+        self.logSeq = logSeq; self.head = head
     }
 
     /// The device that updated, as it is shown; `nil` when it was the vault itself.
@@ -50,7 +55,8 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
         (body["notices"]?.array ?? []).compactMap { o in
             guard let id = o["id"]?.string, let ev = o["ev"]?.string else { return nil }
             return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0,
-                               product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string)
+                               product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string,
+                               logSeq: o["logSeq"]?.int, head: o["head"]?.string)
         }
     }
 }

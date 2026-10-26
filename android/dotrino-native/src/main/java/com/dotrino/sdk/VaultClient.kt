@@ -58,6 +58,8 @@ data class Approval(
 data class VaultNotice(
     val id: String, val ev: String, val version: String, val from: String, val ts: Long,
     val product: String? = null, val deviceId: String? = null, val label: String? = null,
+    /** `log-anchor` only: the vault's log head (`logSeq` + its hash), sealed by the signer. */
+    val logSeq: Long? = null, val head: String? = null,
 ) {
     /** The device that updated, as it is shown; `null` when it was the vault itself. */
     val device: String?
@@ -79,6 +81,7 @@ data class VaultNotice(
                     id = str("id") ?: return@mapNotNull null, ev = str("ev") ?: return@mapNotNull null,
                     version = str("version") ?: "", from = str("from") ?: "", ts = (o["ts"] as? JsonPrimitive)?.longOrNull ?: 0,
                     product = str("product"), deviceId = str("deviceId"), label = str("label"),
+                    logSeq = (o["logSeq"] as? JsonPrimitive)?.longOrNull, head = str("head"),
                 )
             }
     }
