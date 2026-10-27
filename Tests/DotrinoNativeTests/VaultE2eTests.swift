@@ -76,7 +76,7 @@ final class VaultE2eTests: XCTestCase {
         conn.close()
     }
 
-    /// A phone the owner has not given `+aprueba`: the vault says so with `acta` (vaultd ≥ 0.131.6), not «vault locked» from a renewal.
+    /// A phone the owner has not given `+approve`: the vault says so with `acta` (vaultd ≥ 0.131.6), not «vault locked» from a renewal.
     func testAPhoneWithoutApproveIsToldSoNotInvalidPaper() async throws {
         let (f, _) = try await harness()
         let n = f["noApprove"]!

@@ -56,8 +56,8 @@ const enrolled = await enrollDevice({
 // Aprueba: se le concede DESPUÉS de enrolar, como en la vida real. Su papel no lo lleva.
 await vault.setCaps(dev.publickey, ['sign', 'approve'])
 
-// Otro teléfono al que el dueño NO le ha dado `+aprueba`: la bóveda contesta `acta`, y la
-// pantalla dice qué hacer (`caps <ID> +aprueba`).
+// Otro teléfono al que el dueño NO le ha dado `+approve`: la bóveda contesta `acta`, y la
+// pantalla dice qué hacer (`caps <ID> +approve`).
 const dev2 = await makeDeviceKey({ label: 'phone-no-approve' })
 const enc2 = await makeDeviceEncKey()
 const inv2 = await vault.startPairing({ scope: ['vault:sign'], label: 'phone-no-approve', ttlMs: 120_000, account: 'Cuenta E2E' })

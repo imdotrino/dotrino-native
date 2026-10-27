@@ -117,7 +117,7 @@ class VaultClient(
         const val ERROR = "vault.error"
         const val ADMIN_EVENT = "vault.admin.event"
         const val SCOPE_APPROVE = "vault:approve"
-        /** The record does not let this key approve (yet): the owner has to give it `+aprueba`. */
+        /** The record does not let this key approve (yet): the owner has to give it `+approve`. */
         const val NO_APPROVE = "no-approve"
         private val json = Json { ignoreUnknownKeys = true }
     }
@@ -154,7 +154,7 @@ class VaultClient(
     private fun codeOf(msg: String): String = Regex("^unauthorized: ([\\w-]+)").find(msg)?.groupValues?.get(1) ?: "vault-error"
 
     /**
-     * Once, and only for a paper problem: after `+aprueba` the old paper does not carry
+     * Once, and only for a paper problem: after `+approve` the old paper does not carry
      * `vault:approve`, and after a record change it is behind. A revoked device or one the
      * record no longer lets approve is NOT retried — renewing cannot fix that, and retrying
      * would only hide the reason.
@@ -169,7 +169,7 @@ class VaultClient(
         val cert = res["cert"] as? JsonObject ?: throw VaultError("the vault did not send a paper", "no-cert")
         Delegation.check(cert, account.vault, keys.publickey, SCOPE_APPROVE)?.let {
             // A good paper without `vault:approve` is not a broken paper: the record simply
-            // does not let this key approve yet (`+aprueba` is missing). Said as such, so the
+            // does not let this key approve yet (`+approve` is missing). Said as such, so the
             // screen can tell the owner what to do instead of «invalid renewed paper: scope».
             if (it == "scope") throw VaultError("the record does not let this device approve", NO_APPROVE)
             throw VaultError("invalid renewed paper: $it", it)

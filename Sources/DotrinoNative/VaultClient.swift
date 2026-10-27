@@ -106,7 +106,7 @@ public final class VaultClient: @unchecked Sendable {
     public static let errorType = "vault.error"
     public static let adminEvent = "vault.admin.event"
     public static let scopeApprove = "vault:approve"
-    /// The record does not let this key approve (yet): the owner has to give it `+aprueba`.
+    /// The record does not let this key approve (yet): the owner has to give it `+approve`.
     public static let noApprove = "no-approve"
 
     private let keys: DeviceKeys
@@ -176,7 +176,7 @@ public final class VaultClient: @unchecked Sendable {
         return String(msg[r].dropFirst("unauthorized: ".count))
     }
 
-    /// Once, and only for a paper problem: after `+aprueba` the old paper does not carry
+    /// Once, and only for a paper problem: after `+approve` the old paper does not carry
     /// `vault:approve`, and after a record change it is behind. A revoked device or one the
     /// record no longer lets approve is NOT retried — renewing cannot fix that, and retrying
     /// would only hide the reason.
@@ -196,7 +196,7 @@ public final class VaultClient: @unchecked Sendable {
         let a = account
         if let why = Delegation.check(cert, vault: a.vault, sub: keys.publickey, expectedScope: Self.scopeApprove) {
             // A good paper without `vault:approve` is not a broken paper: the record simply
-            // does not let this key approve yet (`+aprueba` is missing). Said as such, so the
+            // does not let this key approve yet (`+approve` is missing). Said as such, so the
             // screen can tell the owner what to do instead of «invalid renewed paper: scope».
             if why == "scope" { throw VaultError("the record does not let this device approve", code: Self.noApprove) }
             throw VaultError("invalid renewed paper: \(why)", code: why)

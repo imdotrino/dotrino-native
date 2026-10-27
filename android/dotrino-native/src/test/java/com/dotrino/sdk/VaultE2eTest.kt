@@ -70,9 +70,9 @@ class VaultE2eTest {
     }
 
     /**
-     * A phone the owner has not given `+aprueba`: the record does not let it approve, and the
+     * A phone the owner has not given `+approve`: the record does not let it approve, and the
      * vault says so with `acta` (vaultd ≥ 0.131.6), which the screen turns into «this phone does
-     * not approve in this account yet: dotrino-vault caps <ID> +aprueba» — not «vault locked»
+     * not approve in this account yet: dotrino-vault caps <ID> +approve» — not «vault locked»
      * from a renewal that could never fix it (2026-09-26).
      */
     @Test fun aPhoneWithoutApproveIsToldSoNotInvalidPaper() = runBlocking {
