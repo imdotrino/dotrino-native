@@ -143,6 +143,12 @@ object Crypto {
         }
     }
 
+    /** `sealAccount`: closed with the ACCOUNT key (generation [gen]); the envelope carries the mark. */
+    fun sealAccount(cek: String, gen: Int, plaintext: String): JsonObject {
+        val e = encryptWithCek(cek, gen, plaintext)
+        return JsonObject(mapOf("t" to kotlinx.serialization.json.JsonPrimitive("dotrino-cek")) + e)
+    }
+
     /** `makeContentKey` of the pilar: a fresh AES-256 key, as base64. */
     fun makeContentKey(): String = b64(randomBytes(32))
 
