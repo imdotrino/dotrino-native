@@ -32,18 +32,21 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
     /// `log-anchor` only: the vault's log head (`logSeq` + its hash), sealed by the signer.
     public let logSeq: Int64?
     public let head: String?
+    /// `delivered` only (vaultd ≥ 0.190.0): what an unattended device took — `secrets` of drawer `ns`, or `passwords`.
+    public let ns: String?
+    public let kind: String?
 
     public init(id: String, ev: String, version: String, from: String, ts: Int64,
                 product: String? = nil, deviceId: String? = nil, label: String? = nil,
-                logSeq: Int64? = nil, head: String? = nil) {
+                logSeq: Int64? = nil, head: String? = nil, ns: String? = nil, kind: String? = nil) {
         self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
         self.product = product; self.deviceId = deviceId; self.label = label
-        self.logSeq = logSeq; self.head = head
+        self.logSeq = logSeq; self.head = head; self.ns = ns; self.kind = kind
     }
 
-    /// The device that updated, as it is shown; `nil` when it was the vault itself.
+    /// The device that updated (or, for `delivered`, that took the keys), as it is shown; `nil` when it was the vault itself.
     public var device: String? {
-        guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil }
+        if ev != "delivered" { guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil } }
         if let label, !label.isEmpty { return label }
         if let deviceId, !deviceId.isEmpty { return deviceId }
         return nil
@@ -56,7 +59,7 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
             guard let id = o["id"]?.string, let ev = o["ev"]?.string else { return nil }
             return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0,
                                product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string,
-                               logSeq: o["logSeq"]?.int, head: o["head"]?.string)
+                               logSeq: o["logSeq"]?.int, head: o["head"]?.string, ns: o["ns"]?.string, kind: o["kind"]?.string)
         }
     }
 }

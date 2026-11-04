@@ -151,6 +151,12 @@ admite más de ~512 KB por mensaje (y un String viaja en UTF-16). Petición y re
 trozos de 100 000 caracteres (`IdentityClient.split` + `Joiner`, Identidad ≥ 0.2.4): el almacén
 de la identidad con fotos de perfil pasaba de ese tope y las páginas se quedaban sin perfiles.
 
+**El asunto del timbre** (0.48.0): `VaultRing` abre el `sealed` que trae el timbre de FCM/APNs
+(vaultd ≥ 0.190.0, websocket-proxy ≥ 1.11.0): quién pide qué, cifrado a la llave del teléfono que
+aprueba, sin red. `VaultRing.approval` / `VaultRing.notice` lo convierten en el pedido o el aviso que
+anuncia; la lista firmada (`approvals`) sigue mandando. `VaultNotice` suma `ns` y `kind` para el aviso
+`delivered` (un aparato con `unattended` se llevó claves o una contraseña sin pedir).
+
 **El ancla de la bitácora** (0.47.0): `LogAnchor.compare` es lo que decide el aprobador con el
 aviso `log-anchor` que la bóveda (≥ 0.104.0) manda callado cada pocas horas: la cabeza de su
 bitácora sellada por el signer. Un `logSeq` menor que el guardado, o el mismo con otra cabeza,

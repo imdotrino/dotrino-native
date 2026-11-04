@@ -60,10 +60,12 @@ data class VaultNotice(
     val product: String? = null, val deviceId: String? = null, val label: String? = null,
     /** `log-anchor` only: the vault's log head (`logSeq` + its hash), sealed by the signer. */
     val logSeq: Long? = null, val head: String? = null,
+    /** `delivered` only (vaultd ≥ 0.190.0): what an unattended device took — `secrets` of drawer [ns], or `passwords`. */
+    val ns: String? = null, val kind: String? = null,
 ) {
-    /** The device that updated, as it is shown; `null` when it was the vault itself. */
+    /** The device that updated (or, for `delivered`, that took the keys), as it is shown; `null` when it was the vault itself. */
     val device: String?
-        get() = if (product.isNullOrBlank() || product == VAULT_PRODUCT) null
+        get() = if (ev != "delivered" && (product.isNullOrBlank() || product == VAULT_PRODUCT)) null
         else label?.takeIf { it.isNotBlank() } ?: deviceId?.takeIf { it.isNotBlank() }
 
     companion object {
@@ -82,6 +84,7 @@ data class VaultNotice(
                     version = str("version") ?: "", from = str("from") ?: "", ts = (o["ts"] as? JsonPrimitive)?.longOrNull ?: 0,
                     product = str("product"), deviceId = str("deviceId"), label = str("label"),
                     logSeq = (o["logSeq"] as? JsonPrimitive)?.longOrNull, head = str("head"),
+                    ns = str("ns"), kind = str("kind"),
                 )
             }
     }
