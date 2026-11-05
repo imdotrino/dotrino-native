@@ -587,6 +587,16 @@ public final class ProxyConnection: NSObject, URLSessionWebSocketDelegate, @unch
         return enc
     }
 
+    /// The account's latest records the proxy keeps (`acta-get`, websocket-proxy ≥ 1.10.0), newer
+    /// than [sinceSeq]. Not trusted as they come: the caller verifies them (`Acta.verify`).
+    public func getActas(_ profileId: String, sinceSeq: Int64? = nil) async throws -> [JSON] {
+        if let c = caps, !c.contains("acta-cache") { throw ProxyError("this proxy does not keep records", code: "no-acta-cache") }
+        var f: [String: JSON] = ["type": "acta-get", "profileId": .string(profileId)]
+        if let sinceSeq { f["sinceSeq"] = .int(sinceSeq) }
+        let res = try await request(f)
+        return (res["actas"]?.array ?? []).filter { $0.object != nil }
+    }
+
     /// A directed message to a key, as its package in a binary frame. [quiet]: queued the same,
     /// but the proxy does not ring their phone.
     /// [ephemeral]: REAL TIME only — if they are not connected it is neither queued nor rung (a presence probe).

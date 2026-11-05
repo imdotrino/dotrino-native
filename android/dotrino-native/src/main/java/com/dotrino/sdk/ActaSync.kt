@@ -59,21 +59,30 @@ object ActaSync {
 
     /** `requestDevices` of the identity: `{ op: 'devices', sinceSeq }`, signed as this device, with its paper. */
     private suspend fun devices(profile: Profile, v: Profile.VaultLink, conn: ProxyConnection, timeoutMs: Long): JsonObject {
+        // SEALED ([VaultSeal]): to the vaults of the newest record at hand; the answer to `rek`.
+        val replyKey = VaultSeal.ReplyKey()
         val data = buildJsonObject {
-            put("op", "devices"); put("sinceSeq", profile.actaSeq ?: 0)
+            put("op", "devices"); put("sinceSeq", profile.actaSeq ?: 0); put("rek", replyKey.encPub)
             put("publickey", profile.publickey); put("ts", System.currentTimeMillis())
             Machine.current?.let { put("machine", it) }
         }
         val signature = profile.signAsDevice(data)
         val answer = CompletableDeferred<JsonObject>()
         val off = conn.onMessage { m ->
-            when (m.payload["type"]?.jsonPrimitive?.content) {
-                DEVICES_RESULT -> answer.complete(m.payload)
-                ERROR -> answer.completeExceptionally(ActaSyncError(m.payload["error"]?.jsonPrimitive?.content ?: "vault error", "vault-error"))
+            val sealed = VaultSeal.isSealed(m.payload)
+            val p = if (sealed) replyKey.open(m.payload) ?: return@onMessage else m.payload
+            when (p["type"]?.jsonPrimitive?.content) {
+                // MIGRATION (expires 2026-12-15): an old vault answers in the clear.
+                DEVICES_RESULT -> if (sealed || VaultSeal.plainAllowed()) answer.complete(p)
+                ERROR -> answer.completeExceptionally(ActaSyncError(p["error"]?.jsonPrimitive?.content ?: "vault error", "vault-error"))
             }
         }
         try {
-            conn.sendByPubkey(v.master, buildJsonObject {
+            // The newer of the record this phone holds and the account's one the proxy keeps
+            // (verified): this request exists precisely because the phone's may be behind.
+            val pid = (profile.acta?.get("profileId") as? JsonPrimitive)?.content
+            val record = if (pid != null) VaultSeal.newest(profile.acta, VaultSeal.accountRecord(conn, pid)) else profile.acta
+            VaultSeal.send(conn, v.master, record, buildJsonObject {
                 put("type", DEVICES); put("data", data); put("signature", signature); put("cert", v.cert)
             })
             return try { withTimeout(timeoutMs) { answer.await() } }

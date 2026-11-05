@@ -25,6 +25,7 @@ Mismas piezas en las dos plataformas (el nombre Kotlin; en Swift es igual salvo 
 | `KeystoreKeys.kt` | las dos llaves de una cuenta en el Android Keystore | — |
 | `ProxyConnection.kt` | `connected` / `identify` / `push-subscribe` / mensaje por pubkey / `networkStats` (0.27.0: una conexión suelta también sale en el modal de red del topbar, registrándola en `DotrinoNetwork`) / `NetworkStats.report()` (0.29.0: el modal de red copia las cifras como texto) / `useDirect` + `sendToOrUpgrade` + `enableTurn` (0.28.0: la conexión suelta también sube a WebRTC; `RemoteAgent.Session` habla por token en cuanto conoce el del agente, como el cliente JS) | `proxy-client/src/client.js` |
 | `VaultClient.kt` | `approvals` / `approve` / `deny` / `block` (0.26.0: un incidente se bloquea o se ignora) / `grants` / `renew` | `vault/remote.js` `vaultRpc` |
+| `VaultSeal` (Swift/Kotlin) | 0.50.0: lo que se le pide a la bóveda va **sellado** entero a las bóvedas del acta y la respuesta vuelve sellada a una llave de un solo uso (`dotrino-vault/docs/sealed-requests.md`); en claro solo hasta el 2026-12-15 | `@dotrino/identity/vault-seal` |
 | `AccountStore.kt` | las cuentas en disco, cifradas con una llave del Keystore | — |
 | `DotrinoStore.kt` | el almacén de la app en el aparato: hilos de entradas con id, lápidas, sellado; una caché por app | `@dotrino/store` (el respaldo en la bóveda es `VaultBackup`) |
 

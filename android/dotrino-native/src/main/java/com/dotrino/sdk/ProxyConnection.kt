@@ -596,7 +596,17 @@ class ProxyConnection(
      * same, but the proxy does not ring their phone — for what can wait until they open the app
      * (presence, an ack).
      */
-    fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) =
+/**
+     * The account's latest records the proxy keeps (`acta-get`, websocket-proxy ≥ 1.10.0), newer
+     * than [sinceSeq]. Not trusted as they come: the caller verifies them ([Acta.verify]).
+     */
+    suspend fun getActas(profileId: String, sinceSeq: Long? = null): List<JsonObject> {
+        caps?.let { if ("acta-cache" !in it) throw ProxyError("this proxy does not keep records", "no-acta-cache") }
+        val res = request(buildJsonObject { put("type", "acta-get"); put("profileId", profileId); if (sinceSeq != null) put("sinceSeq", sinceSeq) })
+        return (res["actas"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+    }
+
+        fun sendByPubkey(to: String, payload: JsonObject, quiet: Boolean = false, toApp: String? = null, ephemeral: Boolean = false) =
         sendByPubkey(to, BinPack.pack(payload), quiet, toApp, ephemeral)
 
     /** The same with a package already made (a binary sealed envelope). */

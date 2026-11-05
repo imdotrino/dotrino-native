@@ -126,26 +126,41 @@ class VaultClient(
     }
 
     @Volatile var account: Account = account; private set
+    /** Where a migration line goes (the request or the answer went in the clear). */
+    var onWarn: (String) -> Unit = { System.err.println(it) }
     private val lock = Mutex()
 
     private suspend fun rpc(sendType: String, okType: String, data: JsonObject, timeoutMs: Long = 15_000): JsonObject = lock.withLock {
+        // SEALED ([VaultSeal]): the whole request to the account's vaults, the answer to `rek`.
+        val replyKey = VaultSeal.ReplyKey()
+        val a = account
         // `machine`: where this phone runs, so the vault shows it in its device list (vaultd ≥ 0.155.0).
-        val signed = JsonObject(data + mapOf("publickey" to JsonPrimitive(keys.publickey), "ts" to JsonPrimitive(System.currentTimeMillis())) + (Machine.current?.let { mapOf("machine" to it) } ?: emptyMap()))
+        val signed = JsonObject(data + mapOf("rek" to JsonPrimitive(replyKey.encPub), "publickey" to JsonPrimitive(keys.publickey), "ts" to JsonPrimitive(System.currentTimeMillis())) + (Machine.current?.let { mapOf("machine" to it) } ?: emptyMap()))
         val answer = CompletableDeferred<JsonObject>()
         val off = conn.onMessage { m ->
-            when (m.payload["type"]?.jsonPrimitive?.content) {
-                okType -> answer.complete(m.payload)
+            val sealed = VaultSeal.isSealed(m.payload)
+            val p = if (sealed) replyKey.open(m.payload) ?: return@onMessage else m.payload   // sealed to someone else
+            when (p["type"]?.jsonPrimitive?.content) {
+                okType -> {
+                    // MIGRATION (expires 2026-12-15): an old vault answers in the clear.
+                    if (!sealed) {
+                        if (!VaultSeal.plainAllowed()) return@onMessage
+                        onWarn("[vault] reply $okType arrived UNSEALED from an old vault: tolerated only until 2026-12-15 — update the vault")
+                    }
+                    answer.complete(p)
+                }
                 ERROR -> {
-                    val msg = m.payload["error"]?.jsonPrimitive?.content ?: "vault error"
+                    val msg = p["error"]?.jsonPrimitive?.content ?: "vault error"
                     answer.completeExceptionally(VaultError(msg, codeOf(msg)))
                 }
             }
         }
         try {
-            conn.sendByPubkey(account.vault, buildJsonObject {
+            val record = VaultSeal.accountRecord(conn, a.profileId ?: a.vault)
+            VaultSeal.send(conn, a.vault, record, buildJsonObject {
                 put("type", sendType); put("data", signed)
-                put("signature", keys.sign(Canonical.stringify(signed))); put("cert", account.cert)
-            })
+                put("signature", keys.sign(Canonical.stringify(signed))); put("cert", a.cert)
+            }, onWarn)
             try { withTimeout(timeoutMs) { answer.await() } }
             catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 throw VaultError("the vault did not reply (is it running?)", "vault-no-reply")

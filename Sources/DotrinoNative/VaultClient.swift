@@ -115,6 +115,8 @@ public final class VaultClient: @unchecked Sendable {
     private let keys: DeviceKeys
     private let conn: ProxyConnection
     private let onRenewed: (Account) -> Void
+    /// Where a migration line goes (the request or the answer went in the clear). Defaults to stderr.
+    public var onWarn: @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
     private let gate = AsyncLock()
     private let stateLock = NSLock()
     private var _account: Account
@@ -139,25 +141,45 @@ public final class VaultClient: @unchecked Sendable {
     }
 
     private func rpcUnlocked(_ sendType: String, _ okType: String, _ data: [String: JSON], timeout: TimeInterval) async throws -> JSON {
+        // SEALED (`VaultSeal`): the whole request to the account's vaults, the answer to `rek`.
+        let replyKey = VaultSeal.ReplyKey()
+        let a = account
         var d = data
+        d["rek"] = .string(replyKey.encPub)
         d["publickey"] = .string(keys.publickey)
         d["ts"] = .int(nowMs())
         // `machine`: where this phone runs, so the vault shows it in its device list (vaultd ≥ 0.155.0).
         if let m = Machine.current { d["machine"] = m }
         let signed = JSON.object(d)
         let answer = OneShot<JSON>()
+        let onWarn = self.onWarn
         let off = conn.onMessage { m in
-            switch m.payload["type"]?.string {
-            case okType: answer.finish(.success(m.payload))
+            var p = m.payload
+            let sealed = VaultSeal.isSealed(p)
+            if sealed {
+                guard let opened = replyKey.open(p) else { return }   // sealed to someone else
+                p = opened
+            }
+            switch p["type"]?.string {
+            case okType:
+                // MIGRATION (expires 2026-12-15): an old vault answers in the clear.
+                if !sealed {
+                    guard VaultSeal.plainAllowed() else { return }
+                    onWarn("[vault] reply \(okType) arrived UNSEALED from an old vault: tolerated only until 2026-12-15 — update the vault")
+                }
+                answer.finish(.success(p))
             case VaultClient.errorType:
-                let msg = m.payload["error"]?.string ?? "vault error"
+                let msg = p["error"]?.string ?? "vault error"
                 answer.finish(.failure(VaultError(msg, code: VaultClient.codeOf(msg))))
             default: break
             }
         }
         defer { off() }
-        try conn.sendByPubkey(account.vault, ["type": .string(sendType), "data": signed,
-                                              "signature": .string(keys.sign(Canonical.stringify(signed))), "cert": account.cert])
+        let record = try await VaultSeal.accountRecord(conn, profileId: a.profileId ?? a.vault)
+        try await VaultSeal.send(conn, dest: a.vault, acta: record,
+                                 payload: ["type": .string(sendType), "data": signed,
+                                           "signature": .string(keys.sign(Canonical.stringify(signed))), "cert": a.cert],
+                                 onWarn: onWarn)
         return try await answer.wait(timeout: timeout, onTimeout: VaultError("the vault did not reply (is it running?)", code: "vault-no-reply"))
     }
 

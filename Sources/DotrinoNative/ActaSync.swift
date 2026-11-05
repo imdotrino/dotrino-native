@@ -54,20 +54,35 @@ public enum ActaSync {
 
     /// `requestDevices` of the identity: `{ op: 'devices', sinceSeq }`, signed as this device, with its paper.
     private static func requestDevices(_ profile: Profile, _ v: Profile.VaultLink, _ conn: ProxyConnection, timeout: TimeInterval) async throws -> JSON {
-        var fields: [String: JSON] = ["op": "devices", "sinceSeq": .int(profile.actaSeq ?? 0), "publickey": .string(profile.publickey), "ts": .int(nowMs())]
+        // SEALED (`VaultSeal`): to the vaults of the record this phone holds; the answer to `rek`.
+        let replyKey = VaultSeal.ReplyKey()
+        var fields: [String: JSON] = ["op": "devices", "sinceSeq": .int(profile.actaSeq ?? 0), "rek": .string(replyKey.encPub), "publickey": .string(profile.publickey), "ts": .int(nowMs())]
         if let m = Machine.current { fields["machine"] = m }
         let data = JSON.object(fields)
         let signature = try profile.signAsDevice(data)
         let answer = OneShot<JSON>()
         let off = conn.onMessage { m in
-            switch m.payload["type"]?.string {
-            case devicesResult: answer.finish(.success(m.payload))
-            case errorType: answer.finish(.failure(ActaSyncError(m.payload["error"]?.string ?? "vault error", code: "vault-error")))
+            var p = m.payload
+            let sealed = VaultSeal.isSealed(p)
+            if sealed {
+                guard let opened = replyKey.open(p) else { return }
+                p = opened
+            }
+            switch p["type"]?.string {
+            // MIGRATION (expires 2026-12-15): an old vault answers in the clear.
+            case devicesResult: if sealed || VaultSeal.plainAllowed() { answer.finish(.success(p)) }
+            case errorType: answer.finish(.failure(ActaSyncError(p["error"]?.string ?? "vault error", code: "vault-error")))
             default: break
             }
         }
         defer { off() }
-        try conn.sendByPubkey(v.master, ["type": .string(devices), "data": data, "signature": .string(signature), "cert": v.cert])
+        // The newer of the record this phone holds and the account's one the proxy keeps (verified):
+        // this request exists precisely because the phone's may be behind.
+        var record = profile.record
+        if let pid = record?["profileId"]?.string, let kept = try await VaultSeal.accountRecord(conn, profileId: pid),
+           (kept["seq"]?.int ?? 0) > (record?["seq"]?.int ?? 0) { record = kept }
+        try await VaultSeal.send(conn, dest: v.master, acta: record,
+                                 payload: ["type": .string(devices), "data": data, "signature": .string(signature), "cert": v.cert])
         return try await answer.wait(timeout: timeout, onTimeout: ActaSyncError("the vault did not reply (is it running?)", code: "vault-no-reply"))
     }
 }
