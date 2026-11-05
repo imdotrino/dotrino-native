@@ -34,6 +34,7 @@ public enum BleWire {
     public struct WireError: Error, CustomStringConvertible {
         public let code: String
         public let description: String
+        public init(code: String, description: String) { self.code = code; self.description = description }
     }
 
     public static func b64u(_ d: Data) -> String { Crypto.b64url(d) }
