@@ -16,6 +16,9 @@ let package = Package(
         // EL CAMINO DIRECTO (WebRTC). Aparte porque libwebrtc pesa ~10 MB por arquitectura y no
         // toda app lo quiere: la que sí, lo añade y hace `session.useDirect(WebRTCDirect())`.
         .library(name: "DotrinoNativeWebRTC", targets: ["DotrinoNativeWebRTC"]),
+        // EL BLUETOOTH (`BluetoothDirect`). Aparte porque Apple exige el motivo de Bluetooth en el
+        // Info.plist de toda app que enlace CoreBluetooth, la use o no: solo lo añade quien lo usa.
+        .library(name: "DotrinoNativeBluetooth", targets: ["DotrinoNativeBluetooth"]),
     ],
     dependencies: [
         // libwebrtc de Google, compilado (BSD). Sin servicios ni telemetría: la pila del navegador.
@@ -25,9 +28,10 @@ let package = Package(
         .target(name: "DotrinoNative"),
         .target(name: "DotrinoNativeUI", dependencies: ["DotrinoNative"], resources: [.process("Resources")]),
         .target(name: "DotrinoNativeWebRTC", dependencies: ["DotrinoNative", .product(name: "WebRTC", package: "WebRTC")]),
+        .target(name: "DotrinoNativeBluetooth", dependencies: ["DotrinoNative"]),
         .testTarget(
             name: "DotrinoNativeTests",
-            dependencies: ["DotrinoNative", "DotrinoNativeUI", "DotrinoNativeWebRTC"],
+            dependencies: ["DotrinoNative", "DotrinoNativeUI", "DotrinoNativeWebRTC", "DotrinoNativeBluetooth"],
             // Los MISMOS vectores que prueba Android (`test-vectors/gen.mjs` los escribe aquí).
             resources: [.copy("Resources/vectors.json"), .copy("Resources/remote-agent.json")]
         ),

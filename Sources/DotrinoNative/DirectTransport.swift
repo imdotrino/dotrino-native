@@ -48,3 +48,15 @@ public struct IceServer: Sendable, Equatable {
         .init(urls: ["stun:global.stun.twilio.com:3478"]),
     ]
 }
+
+/// A radio that is also a direct road and can announce and discover nearby (`{kind, data}`). The
+/// Bluetooth step (`BluetoothDirect`, product `DotrinoNativeBluetooth`) is one; the core only knows
+/// this protocol, so an app that does not use Bluetooth does not link CoreBluetooth.
+public protocol NearbyRadio: DirectTransport {
+    /// Permission granted and the radio on; false = the step is not there.
+    var available: Bool { get }
+    /// Announces until the returned closure is called.
+    func announce(kind: String, data: String) throws -> () -> Void
+    /// What is announced nearby with `kind`, for `timeout` seconds.
+    func discover(kind: String, timeout: TimeInterval, onFound: ((String) -> Void)?) async throws -> [String]
+}

@@ -52,7 +52,7 @@ con actas **reales** de una bóveda desechable (`test-vectors/e2e-acta.mjs` + `A
 | Pieza | Qué es | Original en JS |
 |---|---|---|
 | `BleWire` | el cable: llave del canal (ECDH efímero + HKDF), registros AES-GCM, trozos con etiqueta, `hello` y `beacon`, y la tarjeta de contacto (`encodeContact` / `decodeContact`, 0.44.0) | `proxy-client/src/ble/wire.js` |
-| `BluetoothDirect` | el escalón sobre CoreBluetooth / la pila de Android: periférico y central a la vez, `announce` y `discover` (sin proxio), `start()` / `stop()` (en las dos plataformas desde 0.44.0: nada toca la radio, ni pide el permiso, hasta `start()`) | `proxy-client/src/ble/manager.js` |
+| `BluetoothDirect` | (iOS: producto aparte **`DotrinoNativeBluetooth`** desde 0.49.0, porque Apple exige el motivo de Bluetooth a toda app que enlace CoreBluetooth; el núcleo solo conoce el protocolo `NearbyRadio`) el escalón sobre CoreBluetooth / la pila de Android: periférico y central a la vez, `announce` y `discover` (sin proxio), `start()` / `stop()` (en las dos plataformas desde 0.44.0: nada toca la radio, ni pide el permiso, hasta `start()`) | `proxy-client/src/ble/manager.js` |
 | `DirectLadder` | junta WebRTC y Bluetooth en un solo canal directo y elige en el orden de la escalera: `useDirect(DirectLadder(webrtc, bluetooth))` | `client.js` `_directFor` |
 
 La app pone el permiso: `NSBluetoothAlwaysUsageDescription` en iOS; en Android pide

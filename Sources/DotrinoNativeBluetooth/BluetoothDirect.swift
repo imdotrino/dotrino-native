@@ -1,16 +1,20 @@
 import CoreBluetooth
 import CryptoKit
+import DotrinoNative
 import Foundation
 
 /// THE BLUETOOTH STEP of the transport (`dotrino-proxy-client/docs/bluetooth.md`): after
 /// direct WebRTC, before TURN. The `BluetoothManager` of the JS pilar over CoreBluetooth, with
 /// the same wire (`BleWire`). Plug it in through `DirectLadder` next to WebRTC, or alone.
 ///
+/// Its own product (`DotrinoNativeBluetooth`), out of the core: Apple asks for the Bluetooth
+/// purpose string from any app that merely LINKS CoreBluetooth, so only the apps that use it add it.
+///
 /// Everything runs on ONE serial queue. The app needs `NSBluetoothAlwaysUsageDescription` in its
 /// Info.plist; without permission, or with Bluetooth off, `available` is false and the step is
 /// simply not there. Nothing touches the radio until `start()` (the first one asks for the
 /// permission), so it can be built and plugged in at launch and turned on when it is wanted.
-public final class BluetoothDirect: NSObject, DirectTransport, @unchecked Sendable {
+public final class BluetoothDirect: NSObject, NearbyRadio, @unchecked Sendable {
     private let q = DispatchQueue(label: "dotrino-ble")
     /// Arrivals go to the app from HERE, in order: answering from inside `q` would deadlock.
     private let out = DispatchQueue(label: "dotrino-ble-out")

@@ -6,9 +6,9 @@ import Foundation
 /// `session.useDirect(DirectLadder(webrtc: WebRTCDirect(), bluetooth: bt))`, and `bt.start()` when it is wanted.
 public final class DirectLadder: DirectTransport, @unchecked Sendable {
     public let webrtc: DirectTransport?
-    public let bluetooth: BluetoothDirect?
+    public let bluetooth: NearbyRadio?
 
-    public init(webrtc: DirectTransport?, bluetooth: BluetoothDirect?) {
+    public init(webrtc: DirectTransport?, bluetooth: NearbyRadio?) {
         self.webrtc = webrtc
         self.bluetooth = bluetooth
     }

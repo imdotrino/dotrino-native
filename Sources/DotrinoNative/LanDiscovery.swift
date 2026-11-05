@@ -107,10 +107,10 @@ public final class LanDiscovery: @unchecked Sendable {
 /// ([BluetoothDirect]) and the local network ([LanDiscovery]). The same as `announceNearby` /
 /// `discoverNearby` in `@dotrino/proxy-client`. What is seen by both comes out once.
 public final class Nearby: @unchecked Sendable {
-    private let bluetooth: BluetoothDirect?
+    private let bluetooth: NearbyRadio?
     private let lan = LanDiscovery()
 
-    public init(bluetooth: BluetoothDirect?) { self.bluetooth = bluetooth }
+    public init(bluetooth: NearbyRadio?) { self.bluetooth = bluetooth }
 
     /// Announces until the returned closure is called. Bluetooth only if it is on; the network always.
     public func announce(kind: String, data: String) throws -> () -> Void {
