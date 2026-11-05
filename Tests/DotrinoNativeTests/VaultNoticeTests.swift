@@ -45,4 +45,17 @@ final class VaultNoticeTests: XCTestCase {
         XCTAssertEqual(list.map(\.version), ["0.148.0", "0.31.0"])
         XCTAssertEqual(list.map(\.device), [nil, "laptop"])
     }
+
+    func testAClosedRequestSaysHowItEndedAndWhoAnswered() throws {
+        let body = try JSON.parse("""
+        {"notices":[
+            {"id":"a1","ev":"answered","outcome":"approved","kind":"read","ns":"claude","deviceId":"AB12-CD34","label":"laptop","by":"EF56-7890","request":"r1","ts":7},
+            {"id":"a2","ev":"answered","outcome":"expired","kind":"update","ns":"vault","deviceId":"AB12-CD34","label":"","by":null,"ts":8}
+        ]}
+        """)
+        let list = VaultNotice.list(from: body)
+        XCTAssertEqual(list.map(\.outcome), ["approved", "expired"])
+        XCTAssertEqual(list.map(\.by), ["EF56-7890", nil])
+        XCTAssertEqual(list.map(\.device), ["laptop", "AB12-CD34"])
+    }
 }

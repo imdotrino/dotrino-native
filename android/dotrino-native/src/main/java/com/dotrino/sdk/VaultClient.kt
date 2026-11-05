@@ -62,10 +62,16 @@ data class VaultNotice(
     val logSeq: Long? = null, val head: String? = null,
     /** `delivered` only (vaultd ≥ 0.190.0): what an unattended device took — `secrets` of drawer [ns], or `passwords`. */
     val ns: String? = null, val kind: String? = null,
+    /**
+     * `answered` only (vaultd ≥ 0.193.0): a request that was closed — `approved`, `denied`,
+     * `blocked`, `ignored`, `withdrawn` or `expired` — and who answered it ([by], a device ID;
+     * `null` when nobody did). [kind] is the kind of request, [ns] its drawer.
+     */
+    val outcome: String? = null, val by: String? = null,
 ) {
     /** The device that updated (or, for `delivered`, that took the keys), as it is shown; `null` when it was the vault itself. */
     val device: String?
-        get() = if (ev != "delivered" && (product.isNullOrBlank() || product == VAULT_PRODUCT)) null
+        get() = if (ev != "delivered" && ev != "answered" && (product.isNullOrBlank() || product == VAULT_PRODUCT)) null
         else label?.takeIf { it.isNotBlank() } ?: deviceId?.takeIf { it.isNotBlank() }
 
     companion object {
@@ -85,6 +91,7 @@ data class VaultNotice(
                     product = str("product"), deviceId = str("deviceId"), label = str("label"),
                     logSeq = (o["logSeq"] as? JsonPrimitive)?.longOrNull, head = str("head"),
                     ns = str("ns"), kind = str("kind"),
+                    outcome = str("outcome"), by = str("by"),
                 )
             }
     }

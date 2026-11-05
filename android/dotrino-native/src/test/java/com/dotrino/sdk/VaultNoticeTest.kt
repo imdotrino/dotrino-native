@@ -45,4 +45,15 @@ class VaultNoticeTest {
         assertEquals(listOf("0.148.0", "0.31.0"), list.map { it.version })
         assertEquals(listOf(null, "laptop"), list.map { it.device })
     }
+
+    @Test fun aClosedRequestSaysHowItEndedAndWhoAnswered() {
+        val list = VaultNotice.listFrom(body("""{"notices":[
+            {"id":"a1","ev":"answered","outcome":"approved","kind":"read","ns":"claude","deviceId":"AB12-CD34","label":"laptop","by":"EF56-7890","request":"r1","ts":7},
+            {"id":"a2","ev":"answered","outcome":"expired","kind":"update","ns":"vault","deviceId":"AB12-CD34","label":"","by":null,"ts":8}
+        ]}"""))
+        assertEquals(listOf("approved", "expired"), list.map { it.outcome })
+        assertEquals(listOf("EF56-7890", null), list.map { it.by })
+        assertEquals(listOf("laptop", "AB12-CD34"), list.map { it.device })
+        assertEquals("claude", list[0].ns)
+    }
 }

@@ -35,18 +35,25 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
     /// `delivered` only (vaultd ≥ 0.190.0): what an unattended device took — `secrets` of drawer `ns`, or `passwords`.
     public let ns: String?
     public let kind: String?
+    /// `answered` only (vaultd ≥ 0.193.0): a request that was closed — `approved`, `denied`,
+    /// `blocked`, `ignored`, `withdrawn` or `expired` — and who answered it (`by`, a device ID;
+    /// `nil` when nobody did). `kind` is the kind of request, `ns` its drawer.
+    public let outcome: String?
+    public let by: String?
 
     public init(id: String, ev: String, version: String, from: String, ts: Int64,
                 product: String? = nil, deviceId: String? = nil, label: String? = nil,
-                logSeq: Int64? = nil, head: String? = nil, ns: String? = nil, kind: String? = nil) {
+                logSeq: Int64? = nil, head: String? = nil, ns: String? = nil, kind: String? = nil,
+                outcome: String? = nil, by: String? = nil) {
         self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
         self.product = product; self.deviceId = deviceId; self.label = label
         self.logSeq = logSeq; self.head = head; self.ns = ns; self.kind = kind
+        self.outcome = outcome; self.by = by
     }
 
     /// The device that updated (or, for `delivered`, that took the keys), as it is shown; `nil` when it was the vault itself.
     public var device: String? {
-        if ev != "delivered" { guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil } }
+        if ev != "delivered" && ev != "answered" { guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil } }
         if let label, !label.isEmpty { return label }
         if let deviceId, !deviceId.isEmpty { return deviceId }
         return nil
@@ -59,7 +66,8 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
             guard let id = o["id"]?.string, let ev = o["ev"]?.string else { return nil }
             return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0,
                                product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string,
-                               logSeq: o["logSeq"]?.int, head: o["head"]?.string, ns: o["ns"]?.string, kind: o["kind"]?.string)
+                               logSeq: o["logSeq"]?.int, head: o["head"]?.string, ns: o["ns"]?.string, kind: o["kind"]?.string,
+                               outcome: o["outcome"]?.string, by: o["by"]?.string)
         }
     }
 }
