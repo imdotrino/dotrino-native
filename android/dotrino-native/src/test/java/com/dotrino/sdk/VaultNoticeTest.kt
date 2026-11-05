@@ -31,7 +31,7 @@ class VaultNoticeTest {
             {"id":"c","ev":"updated","version":"0.147.0","from":"0.146.0","ts":3,"product":"@dotrino/vaultd","deviceId":"EF56-7890","label":"vault"},
             {"id":"d","ev":"updated","version":"0.147.0","from":"0.146.0","ts":4}
         ]}"""))
-        assertEquals(listOf("laptop", "AB12-CD34", null, null), list.map { it.device })
+        assertEquals(listOf("laptop (AB12-CD34)", "AB12-CD34", null, null), list.map { it.device })
         assertEquals("@dotrino/terminal-agent", list[0].product)
         assertEquals("AB12-CD34", list[0].deviceId)
     }
@@ -43,17 +43,18 @@ class VaultNoticeTest {
         ]}"""))
         assertEquals(listOf("update-needs-root", "update-needs-root"), list.map { it.ev })
         assertEquals(listOf("0.148.0", "0.31.0"), list.map { it.version })
-        assertEquals(listOf(null, "laptop"), list.map { it.device })
+        assertEquals(listOf(null, "laptop (AB12-CD34)"), list.map { it.device })
     }
 
     @Test fun aClosedRequestSaysHowItEndedAndWhoAnswered() {
         val list = VaultNotice.listFrom(body("""{"notices":[
-            {"id":"a1","ev":"answered","outcome":"approved","kind":"read","ns":"claude","deviceId":"AB12-CD34","label":"laptop","by":"EF56-7890","request":"r1","ts":7},
+            {"id":"a1","ev":"answered","outcome":"approved","kind":"read","ns":"claude","deviceId":"AB12-CD34","label":"laptop","by":"EF56-7890","byLabel":"phone","request":"r1","ts":7},
             {"id":"a2","ev":"answered","outcome":"expired","kind":"update","ns":"vault","deviceId":"AB12-CD34","label":"","by":null,"ts":8}
         ]}"""))
         assertEquals(listOf("approved", "expired"), list.map { it.outcome })
         assertEquals(listOf("EF56-7890", null), list.map { it.by })
-        assertEquals(listOf("laptop", "AB12-CD34"), list.map { it.device })
+        assertEquals(listOf("laptop (AB12-CD34)", "AB12-CD34"), list.map { it.device })
+        assertEquals(listOf("phone (EF56-7890)", null), list.map { it.approver })
         assertEquals("claude", list[0].ns)
     }
 }

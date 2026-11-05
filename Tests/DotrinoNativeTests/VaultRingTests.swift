@@ -37,6 +37,6 @@ final class VaultRingTests: XCTestCase {
         let me = SoftKeys()
         let s = try sealed(#"{"ev":"delivered","id":"n1","ts":5,"kind":"passwords","ns":"passwords","deviceId":"AB12-CD34","label":"servidor"}"#, to: me)
         let n = try XCTUnwrap(VaultRing.notice(try XCTUnwrap(VaultRing.open(s, keys: me))))
-        XCTAssertEqual([n.ev, n.kind, n.ns, n.device], ["delivered", "passwords", "passwords", "servidor"])
+        XCTAssertEqual([n.ev, n.kind, n.ns, n.device], ["delivered", "passwords", "passwords", "servidor (AB12-CD34)"])
     }
 }

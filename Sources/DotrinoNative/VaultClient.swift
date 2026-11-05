@@ -40,23 +40,35 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
     /// `nil` when nobody did). `kind` is the kind of request, `ns` its drawer.
     public let outcome: String?
     public let by: String?
+    /// `answered` only: the alias of who answered (`by` is its ID).
+    public let byLabel: String?
 
     public init(id: String, ev: String, version: String, from: String, ts: Int64,
                 product: String? = nil, deviceId: String? = nil, label: String? = nil,
                 logSeq: Int64? = nil, head: String? = nil, ns: String? = nil, kind: String? = nil,
-                outcome: String? = nil, by: String? = nil) {
+                outcome: String? = nil, by: String? = nil, byLabel: String? = nil) {
         self.id = id; self.ev = ev; self.version = version; self.from = from; self.ts = ts
         self.product = product; self.deviceId = deviceId; self.label = label
         self.logSeq = logSeq; self.head = head; self.ns = ns; self.kind = kind
-        self.outcome = outcome; self.by = by
+        self.outcome = outcome; self.by = by; self.byLabel = byLabel
     }
 
-    /// The device that updated (or, for `delivered`, that took the keys), as it is shown; `nil` when it was the vault itself.
+    /// «laptop (AB12-CD34)»: alias AND id (the owner, 2026-11-05); the one that exists if only one does.
+    private static func named(_ label: String?, _ id: String?) -> String? {
+        let l = (label?.isEmpty ?? true) ? nil : label
+        let i = (id?.isEmpty ?? true) ? nil : id
+        if let l, let i { return "\(l) (\(i))" }
+        return l ?? i
+    }
+
+    /// Who answered a closed request (`answered`), alias and id; `nil` when nobody did (it expired).
+    public var approver: String? { Self.named(byLabel, by) }
+
+    /// The device that updated (or, for `delivered`, that took the keys; for `answered`, that asked), as it
+    /// is shown: alias and id, «laptop (AB12-CD34)»; `nil` when it was the vault itself.
     public var device: String? {
         if ev != "delivered" && ev != "answered" { guard let product, !product.isEmpty, product != Self.vaultProduct else { return nil } }
-        if let label, !label.isEmpty { return label }
-        if let deviceId, !deviceId.isEmpty { return deviceId }
-        return nil
+        return Self.named(label, deviceId)
     }
 
     /// The `notices` of an `approvals` answer. A vault that does not send the field has no
@@ -67,7 +79,7 @@ public struct VaultNotice: Equatable, Sendable, Identifiable {
             return VaultNotice(id: id, ev: ev, version: o["version"]?.string ?? "", from: o["from"]?.string ?? "", ts: o["ts"]?.int ?? 0,
                                product: o["product"]?.string, deviceId: o["deviceId"]?.string, label: o["label"]?.string,
                                logSeq: o["logSeq"]?.int, head: o["head"]?.string, ns: o["ns"]?.string, kind: o["kind"]?.string,
-                               outcome: o["outcome"]?.string, by: o["by"]?.string)
+                               outcome: o["outcome"]?.string, by: o["by"]?.string, byLabel: o["byLabel"]?.string)
         }
     }
 }

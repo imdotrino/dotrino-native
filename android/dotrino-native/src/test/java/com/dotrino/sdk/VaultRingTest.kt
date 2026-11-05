@@ -30,6 +30,6 @@ class VaultRingTest {
         val me = TestKeys.fresh()
         val s = sealed("""{"ev":"delivered","id":"n1","ts":5,"kind":"passwords","ns":"passwords","deviceId":"AB12-CD34","label":"servidor"}""", me)
         val n = VaultRing.notice(VaultRing.open(s, me)!!)!!
-        assertEquals(listOf("delivered", "passwords", "passwords", "servidor"), listOf(n.ev, n.kind, n.ns, n.device))
+        assertEquals(listOf("delivered", "passwords", "passwords", "servidor (AB12-CD34)"), listOf(n.ev, n.kind, n.ns, n.device))
     }
 }

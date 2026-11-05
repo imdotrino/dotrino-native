@@ -68,14 +68,28 @@ data class VaultNotice(
      * `null` when nobody did). [kind] is the kind of request, [ns] its drawer.
      */
     val outcome: String? = null, val by: String? = null,
+    /** `answered` only: the alias of who answered ([by] is its ID). */
+    val byLabel: String? = null,
 ) {
-    /** The device that updated (or, for `delivered`, that took the keys), as it is shown; `null` when it was the vault itself. */
+    /**
+     * The device that updated (or, for `delivered`, that took the keys; for `answered`, that asked),
+     * as it is shown: ALIAS AND ID, «laptop (AB12-CD34)» (the owner, 2026-11-05: «not only the ID
+     * but also the alias»); the one that exists if only one does; `null` when it was the vault itself.
+     */
     val device: String?
         get() = if (ev != "delivered" && ev != "answered" && (product.isNullOrBlank() || product == VAULT_PRODUCT)) null
-        else label?.takeIf { it.isNotBlank() } ?: deviceId?.takeIf { it.isNotBlank() }
+        else named(label, deviceId)
+
+    /** Who answered a closed request (`answered`), alias and ID; `null` when nobody did (it expired). */
+    val approver: String? get() = named(byLabel, by)
 
     companion object {
         const val VAULT_PRODUCT = "@dotrino/vaultd"
+
+        private fun named(label: String?, id: String?): String? {
+            val l = label?.takeIf { it.isNotBlank() }; val i = id?.takeIf { it.isNotBlank() }
+            return when { l != null && i != null -> "$l ($i)"; else -> l ?: i }
+        }
 
         /**
          * The `notices` of an `approvals` answer. A vault that does not send the field has no
@@ -91,7 +105,7 @@ data class VaultNotice(
                     product = str("product"), deviceId = str("deviceId"), label = str("label"),
                     logSeq = (o["logSeq"] as? JsonPrimitive)?.longOrNull, head = str("head"),
                     ns = str("ns"), kind = str("kind"),
-                    outcome = str("outcome"), by = str("by"),
+                    outcome = str("outcome"), by = str("by"), byLabel = str("byLabel"),
                 )
             }
     }
